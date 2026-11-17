@@ -199,7 +199,8 @@ var S = {
   users:[], usersOk:false,    /* coleccion "usuarios" */
   mae:LS.get("ops_mae",{}),   /* maestro: ref -> {d,b,u,g,l,p,vi,ve} */
   ofr:LS.get("ops_ofr",{}),   /* ofertas: OF -> {desc,comps:[{ref,desc,cant}]} */
-  desg:{},                    /* marcas de desglose por C.O.: {co:{OF:true|false}} */
+  cat:{},                     /* categoria global de cada oferta: {OF:{virtual:true|false|null,...}} */
+  desg:{},                  /* marcas de desglose por C.O.: {co:{OF:true|false}} */
   matriz:{},                  /* por C.O.: {ref:{zona,ubicacion,secuencia,auxiliarId,descItem}} */
   coSel:LS.raw("ops_cosel")||"006",   /* C.O. de trabajo (el administrador puede cambiarlo) */
   cap:{},                     /* capacidades de vehiculos del C.O.: placa -> {kg,m3} */
@@ -407,12 +408,25 @@ function parseMatriz(t){
 /* Desglose de ofertas virtuales (OF). Regla: la base de ofertas manda.
    - Si la oferta tiene marca de desglose para el C.O. (SI/NO), se respeta.
    - Sin marca: se desglosan las de facturas y pedidos; las de requisiciones y remisiones se dejan como producto armado. */
+/* Decision de desglose de una oferta en un C.O.: 1) excepcion de la ciudad, 2) categoria global (virtual SI/NO), 3) sin definir (null → regla por tipo de documento). */
+function desgloseDe(code,co){
+  var f=(S.desg[co]||{})[code]; if(f===true||f===false) return {v:f,fuente:"ciudad"};
+  var c=S.cat[code]; if(c&&c.virtual===true) return {v:true,fuente:"categoría"}; if(c&&c.virtual===false) return {v:false,fuente:"categoría"};
+  return {v:null,fuente:"sin categorizar"};
+}
+/* Toda oferta que aparezca en un listado o en una composicion queda registrada en la base de ofertas (sin categorizar) para validarla */
+async function registrarOfertas(items,origen,co){
+  var nuevos=[], vistos={};
+  items.forEach(function(x){ var code=String(x.ref||x.code||"").toUpperCase(); if(!/^OF/i.test(code)||vistos[code]||S.cat[code]) return; vistos[code]=1; nuevos.push({id:code,datos:{codigo:code,desc:x.desc||"",virtual:null,origen:origen,detectadoCo:co||"",detectadoEn:ahora(),detectadoPor:S.me?S.me.id:""}}); });
+  if(!nuevos.length) return 0;
+  await DB.setMany("ofertas_cat",nuevos); nuevos.forEach(function(n){ S.cat[n.id]=n.datos; }); return nuevos.length;
+}
 function desglosar(lineas,co){
   var ueArch={}; lineas.forEach(function(l){ if(!/^OF/i.test(l.ref)&&l.ue>0&&!ueArch[l.ref]) ueArch[l.ref]=l.ue; });
-  var flags=S.desg[co]||{}, out=[], sin={}, nOF=0, nComp=0, dejadas=0;
+  var out=[], sin={}, nOF=0, nComp=0, dejadas=0;
   lineas.forEach(function(l){
     if(!/^OF/i.test(l.ref)){ out.push(l); return; }
-    var code=l.ref.toUpperCase(), flag=flags[code];
+    var code=l.ref.toUpperCase(), flag=desgloseDe(code,co).v; if(flag===null) flag=undefined;
     var quiere=(flag===true)||(flag===undefined&&(l.t==="FAC"||l.t==="PED"||!l.t));
     var comp=S.ofr[code];
     if(quiere&&comp&&comp.comps&&comp.comps.length){
@@ -504,7 +518,9 @@ async function cargarBase(force,coPedido){
     p.push(DB.list("maestro",{all:true}).then(function(rows){ var m={}; rows.forEach(function(r){ m[r.id]=r.datos; }); S.mae=m; LS.set("ops_mae",m); }));
   }
   p.push(DB.list("ofertas",{all:true}).then(function(rows){ var o={}; rows.forEach(function(r){ if(r.datos&&r.datos.comps) o[r.id]={desc:r.datos.desc||"",comps:r.datos.comps}; }); S.ofr=o; LS.set("ops_ofr",o); }));
-  if(co){ p.push(DB.list("ofertas_desglose",{filter:{"datos->>co":"eq."+co},all:true}).then(function(rows){ var f={}; rows.forEach(function(r){ if(r.datos&&r.datos.oferta) f[r.datos.oferta]=!!r.datos.desglosar; }); S.desg[co]=f; })); }
+  /* marcas por ciudad (solo excepciones) y categoria global de cada oferta: de las 5 ciudades */
+  p.push(DB.list("ofertas_desglose",{all:true}).then(function(rows){ var f={}; rows.forEach(function(r){ var d=r.datos; if(d&&d.oferta&&d.co){ (f[d.co]=f[d.co]||{})[d.oferta]=!!d.desglosar; } }); S.desg=f; }));
+  p.push(DB.list("ofertas_cat",{all:true}).then(function(rows){ var c={}; rows.forEach(function(r){ c[r.id]=r.datos||{}; }); S.cat=c; }));
   await Promise.all(p);
 }
 async function cargarMatriz(co,force){
@@ -697,7 +713,7 @@ VIEWS.home=function(){
     '<button class="tile" data-act="irsem"><div class="ic">◐</div><div><b>Semáforos de vencimiento</b><span>Se abre con tu mismo usuario, sin volver a ingresar</span></div></button>'+
     '<h2>Administración</h2>'+
     '<button class="tile" data-act="ir" data-v="matriz"><div class="ic">▤</div><div><b>Matriz de asignación</b><span>Qué referencias le corresponden a cada auxiliar (y, a futuro, su ubicación)</span></div></button>';
-  if(esAdmin()) h2+='<button class="tile" data-act="ir" data-v="ofertas"><div class="ic">✦</div><div><b>Ofertas virtuales</b><span>Composición y cuáles se desglosan</span></div></button>'+
+  if(esAdmin()) h2+='<button class="tile" data-act="ir" data-v="ofertas"><div class="ic">✦</div><div><b>Ofertas</b><span>Cuáles son virtuales y se desglosan</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="maestro"><div class="ic">⚙</div><div><b>Maestro de productos</b><span>Grupo, línea, empaque, peso y dimensiones</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="usuarios"><div class="ic">☰</div><div><b>Usuarios y roles</b><span>Administradores, coordinadores y auxiliares</span></div></button>';
   app(h2);
@@ -930,26 +946,66 @@ ACT.mzaplicar=async function(){
   MZ.aplicando=false; render();
 };
 
-/* ---------- ofertas virtuales: composicion (compartida) y marca de desglose por C.O. ---------- */
+/* ---------- ofertas: base unica de las 5 ciudades. Categoria global (virtual SI/NO) + excepcion por ciudad + composicion ---------- */
+var OF={filtro:"todas",q:""};
+function ofertasLista(){
+  var set={}; Object.keys(S.ofr).forEach(function(k){ set[k]=1; }); Object.keys(S.cat).forEach(function(k){ set[k]=1; });
+  Object.keys(S.desg).forEach(function(co){ Object.keys(S.desg[co]).forEach(function(k){ set[k]=1; }); });
+  return Object.keys(set).sort(ordenRef);
+}
+function ofDesc(k){ var c=S.cat[k]||{}, o=S.ofr[k]||{}; return c.desc||o.desc||""; }
+function ofCatTxt(k){ var c=S.cat[k]; return c&&c.virtual===true?"virtual":c&&c.virtual===false?"no":"sin"; }
 VIEWS.ofertas=function(){
-  topbar("Ofertas virtuales",subtituloUsuario(),true);
-  var co=coActual(), codes=Object.keys(S.ofr), f=S.desg[co]||{}, si=Object.keys(f).filter(function(k){ return f[k]===true; }), no=Object.keys(f).filter(function(k){ return f[k]===false; });
-  var pend=si.filter(function(k){ return !S.ofr[k]; });
-  var h='<div class="seg">'+CIUDADES.map(function(c){ return '<span class="chip btn2 '+(co===c.co?"sel":"")+'" data-act="ofco" data-co="'+c.co+'">'+c.nombre+'</span>'; }).join("")+'</div>';
-  h+='<h1>Ofertas virtuales</h1><p class="muted small">Las ofertas con marca <b>SÍ</b> se desglosan en sus componentes al crear una sesión; las demás se dejan como producto. Sin marca, se desglosan las de facturas y pedidos.</p>';
-  h+='<div class="kpis"><div class="kpi"><b>'+nf(codes.length)+'</b><span>Con composición</span></div><div class="kpi"><b>'+nf(si.length)+'</b><span>Marcadas SÍ ('+esc(co)+')</span></div><div class="kpi"><b>'+nf(no.length)+'</b><span>Marcadas NO</span></div></div>';
-  if(pend.length) h+='<div class="hint warn" style="margin-top:10px"><b>'+pend.length+' ofertas marcadas SÍ no tienen composición cargada</b>: '+esc(pend.slice(0,10).join(", "))+(pend.length>10?"…":"")+'. Cargue la composición para que se desglosen.</div>';
-  h+='<div class="card gold"><b>Composición de ofertas</b><p class="small muted">Excel con OFERTA (o CODIGO OFERA), COMPONENTE (o CODIGO PRODUCTO) y CANT. Puede ser la exportación de la pantalla "Composición de ofertas" de la app de picking. Reemplaza la composición de las ofertas que vengan en el archivo.</p><button class="btn block" data-act="ofcomp">Cargar composición (Excel)</button></div>';
-  h+='<div class="card gold"><b>Marcas de desglose</b><p class="small muted">Excel de zonas con la columna Desglosar_Oferta (SI/NO). Se aplican al C.O. '+esc(co)+'.</p><button class="btn block" data-act="ofmarcas">Cargar marcas (Excel)</button></div>';
+  topbar("Ofertas",subtituloUsuario(),true);
+  var todas=ofertasLista(), v=0,n=0,s=0,sc=0;
+  todas.forEach(function(k){ var t=ofCatTxt(k); if(t==="virtual") v++; else if(t==="no") n++; else s++; if(!S.ofr[k]) sc++; });
+  var h='<h1>Ofertas</h1><p class="muted small">Base única de las 5 ciudades. Toda oferta que aparece en un listado se registra aquí sola. Las categorizadas como <b>virtuales</b> se desglosan en sus componentes al crear la sesión; las demás se dejan como producto armado. Una ciudad puede tener una excepción.</p>';
+  h+='<div class="kpis"><div class="kpi"><b>'+nf(todas.length)+'</b><span>Ofertas</span></div><div class="kpi"><b>'+nf(v)+'</b><span>Virtuales</span></div><div class="kpi"><b>'+nf(s)+'</b><span>Sin categorizar</span></div></div>';
+  var fl=[["todas","Todas"],["sin","Sin categorizar"],["virtual","Virtuales"],["no","No virtuales"],["sincomp","Sin composición"]];
+  h+='<div class="seg" style="margin-top:10px">'+fl.map(function(f){ return '<span class="chip btn2 '+(OF.filtro===f[0]?"sel":"")+'" data-act="offiltro" data-f="'+f[0]+'">'+f[1]+(f[0]==="sincomp"?' ('+sc+')':'')+'</span>'; }).join("")+'</div>';
+  h+='<input type="search" id="ofq" placeholder="Buscar código o descripción" value="'+esc(OF.q)+'" style="margin-top:8px">';
+  var lista=todas.filter(function(k){
+    if(OF.filtro==="sincomp"&&S.ofr[k]) return false;
+    if((OF.filtro==="sin"||OF.filtro==="virtual"||OF.filtro==="no")&&ofCatTxt(k)!==OF.filtro) return false;
+    var q=normH(OF.q); return !q||normH(k+" "+ofDesc(k)).indexOf(q)>=0;
+  });
+  h+='<p class="small muted">'+nf(lista.length)+' ofertas'+(lista.length>150?' (se muestran las primeras 150: usa el buscador)':'')+'</p>';
+  h+=lista.slice(0,150).map(function(k){
+    var c=S.ofr[k], t=ofCatTxt(k);
+    var ciu=CIUDADES.map(function(ci){ var d=desgloseDe(k,ci.co); return ci.nombre.slice(0,3).toUpperCase()+' '+(d.v===true?'✔':d.v===false?'✖':'·'); }).join(' · ');
+    return '<button class="task" data-act="ofabrir" data-k="'+esc(k)+'"><div class="tt"><b class="mono">'+esc(k)+'</b><span class="chip '+(t==="virtual"?"st-ok":t==="no"?"":"st-nov")+'">'+(t==="virtual"?"Virtual":t==="no"?"No virtual":"Sin categorizar")+'</span></div><div class="sub">'+esc(ofDesc(k))+'</div><div class="mini"><span class="chip">'+(c?'✔ '+c.comps.length+' componentes':'✖ sin composición')+'</span></div><div class="small muted" style="margin-top:4px">Desglosa: '+ciu+'</div></button>';
+  }).join("");
+  h+='<div class="sp"></div><div class="card gold"><b>Composición de ofertas</b><p class="small muted">Excel con OFERTA (o CODIGO OFERA), COMPONENTE (o CODIGO PRODUCTO) y CANT. Puede ser la exportación de "Composición de ofertas" de la app de picking. Reemplaza la composición de las ofertas que vengan en el archivo y registra las nuevas.</p><button class="btn block" data-act="ofcomp">Cargar composición (Excel)</button></div>';
+  h+='<div class="card gold"><b>Excepciones por ciudad</b><p class="small muted">Excel de zonas con la columna Desglosar_Oferta (SI/NO). Se aplican al C.O. '+esc(coActual())+' como excepción de esa ciudad.</p><button class="btn block" data-act="ofmarcas">Cargar marcas (Excel)</button></div>';
   app(h);
+  var q=$("#ofq"); if(q){ q.oninput=function(){ OF.q=q.value; var pos=q.selectionStart; render(); var q2=$("#ofq"); if(q2){ q2.focus(); try{ q2.setSelectionRange(pos,pos); }catch(e){} } }; }
 };
-ACT.ofco=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); cargarBase().then(render).catch(function(){}); render(); };
+ACT.offiltro=function(el,d){ OF.filtro=d("f"); render(); };
+ACT.ofabrir=function(el,d){
+  var k=d("k"), c=S.cat[k]||{}, comp=S.ofr[k], cv=c.virtual===true?"1":c.virtual===false?"0":"";
+  var bg=abrirSheet('<h3>'+esc(k)+'</h3><p class="small muted">'+esc(ofDesc(k))+'</p>'+
+    '<label class="lb">Categoría (todas las ciudades)</label><select id="ofCat"><option value=""'+(cv===""?" selected":"")+'>Sin categorizar</option><option value="1"'+(cv==="1"?" selected":"")+'>Virtual: se desglosa en componentes</option><option value="0"'+(cv==="0"?" selected":"")+'>No virtual: se deja como producto</option></select>'+
+    '<label class="lb">Excepción por ciudad</label>'+CIUDADES.map(function(ci){ var f=(S.desg[ci.co]||{})[k]; var vv=f===true?"SI":f===false?"NO":""; return '<div class="row" style="margin-bottom:6px"><span class="grow">'+esc(ci.nombre)+'</span><select class="ofCiu" data-co="'+ci.co+'"><option value=""'+(vv===""?" selected":"")+'>Según categoría</option><option value="SI"'+(vv==="SI"?" selected":"")+'>Desglosar</option><option value="NO"'+(vv==="NO"?" selected":"")+'>No desglosar</option></select></div>'; }).join("")+
+    '<label class="lb">Composición</label>'+(comp?'<div class="small">'+comp.comps.map(function(x){ return esc(x.ref)+' × '+esc(String(x.cant))+(x.desc?' · '+esc(x.desc):''); }).join('<br>')+'</div>':'<div class="hint warn">Sin composición cargada: no se puede desglosar hasta cargarla.</div>')+
+    '<div class="sp"></div><button class="btn gold block" id="ofOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="ofX">Cancelar</button>');
+  $("#ofX",bg).onclick=cerrarSheet;
+  $("#ofOk",bg).onclick=async function(){
+    var v=$("#ofCat",bg).value, virt=v===""?null:v==="1";
+    try{
+      await DB.set("ofertas_cat",k,Object.assign({},c,{codigo:k,desc:ofDesc(k),virtual:virt,actualizadoEn:ahora(),actualizadoPor:S.me.id}));
+      var tareas=[]; $$(".ofCiu",bg).forEach(function(s){ var co=s.getAttribute("data-co"), id=co+"-"+k, prev=(S.desg[co]||{})[k];
+        if(s.value===""){ if(prev!==undefined) tareas.push(DB.del("ofertas_desglose",id)); }
+        else tareas.push(DB.set("ofertas_desglose",id,{co:co,oferta:k,desglosar:s.value==="SI",actualizadoEn:ahora()})); });
+      await Promise.all(tareas); await cargarBase(false); cerrarSheet(); toast("Oferta "+k+" actualizada"); render();
+    }catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
+  };
+};
 ACT.ofcomp=function(){
   elegirExcel(async function(wb){
     var t=tablaDe(wb,["codigo ofera","codigo oferta","oferta"],"OFERTAS"); if(!t){ toast("No se encontró la composición de ofertas"); return; }
     var r; try{ r=parseComposicion(t); }catch(e){ toast(e.message); return; }
     if(!confirm("Se cargarán "+r.ofertas+" ofertas ("+r.n+" componentes) en la base compartida. ¿Continuar?")) return;
-    try{ toast("Guardando ofertas…",5000); await DB.setMany("ofertas",Object.keys(r.of).map(function(k){ return {id:k,datos:{desc:r.of[k].desc,comps:r.of[k].comps}}; })); await cargarBase(); toast(r.ofertas+" ofertas guardadas"); }
+    try{ toast("Guardando ofertas…",5000); await DB.setMany("ofertas",Object.keys(r.of).map(function(k){ return {id:k,datos:{desc:r.of[k].desc,comps:r.of[k].comps}}; })); await cargarBase(); var nv=await registrarOfertas(Object.keys(r.of).map(function(k){ return {ref:k,desc:r.of[k].desc}; }),"composición",coActual()); toast(r.ofertas+" ofertas guardadas"+(nv?" · "+nv+" nuevas por categorizar":"")); }
     catch(e){ toast("No se pudo guardar: "+(e.message||e),4000); }
     render();
   });
@@ -960,7 +1016,7 @@ ACT.ofmarcas=function(){
     var p; try{ p=parseMatriz(t); }catch(e){ toast(e.message); return; }
     var co=coActual(), fl=p.rows.filter(function(r){ return r.flag&&(/^OF/i.test(r.ref)||r.flag==="SI"); });
     if(!fl.length){ toast("El archivo no trae la columna Desglosar_Oferta con SI/NO"); return; }
-    try{ await DB.setMany("ofertas_desglose",fl.map(function(r){ return {id:co+"-"+r.ref.toUpperCase(),datos:{co:co,oferta:r.ref.toUpperCase(),desglosar:r.flag==="SI",actualizadoEn:ahora()}}; })); await cargarBase(); toast(fl.length+" marcas aplicadas a C.O. "+co); }
+    try{ await DB.setMany("ofertas_desglose",fl.map(function(r){ return {id:co+"-"+r.ref.toUpperCase(),datos:{co:co,oferta:r.ref.toUpperCase(),desglosar:r.flag==="SI",actualizadoEn:ahora()}}; })); await registrarOfertas(fl.map(function(r){ return {ref:r.ref,desc:r.desc||""}; }),"marcas",co); await cargarBase(); toast(fl.length+" marcas aplicadas a C.O. "+co); }
     catch(e){ toast("No se pudo guardar: "+(e.message||e),4000); }
     render();
   });
@@ -1075,7 +1131,8 @@ VIEWS.nueva=function(){
     if(esAdmin()) h+='<label class="lb">Centro de operación</label><div class="seg">'+CIUDADES.map(function(c){ return '<span class="chip btn2 '+(N.co===c.co?"sel":"")+'" data-act="nvco" data-co="'+c.co+'">'+c.nombre+'</span>'; }).join("")+'</div>';
     h+='<div class="kpis" style="margin-top:10px"><div class="kpi"><b>'+nf(N.items.length)+'</b><span>Referencias</span></div><div class="kpi"><b>'+nf(N.unid)+'</b><span>Unidades</span></div><div class="kpi"><b>'+nf(N.docs)+'</b><span>Documentos</span></div></div>';
     if(N.des.nOF||N.des.dejadas) h+='<p class="small muted">Ofertas: '+N.des.nOF+' desglosadas en '+N.des.nComp+' líneas'+(N.des.dejadas?' · '+N.des.dejadas+' se dejan como producto armado':'')+'.</p>';
-    var sin=Object.keys(N.des.sin); if(sin.length) h+='<div class="hint warn" style="margin-top:8px">Ofertas que deben desglosarse pero no tienen composición (quedan como producto): <b>'+sin.length+'</b> — '+esc(sin.slice(0,6).join(", "))+(sin.length>6?"…":"")+'. Cargue su composición en Administración → Ofertas virtuales.</div>';
+    var sin=Object.keys(N.des.sin); if(sin.length) h+='<div class="hint warn" style="margin-top:8px">Ofertas que deben desglosarse pero no tienen composición (quedan como producto): <b>'+sin.length+'</b> — '+esc(sin.slice(0,6).join(", "))+(sin.length>6?"…":"")+'. Cargue su composición en Administración → Ofertas.</div>';
+    if(N.ofNuevas) h+='<div class="hint" style="margin-top:8px"><b>'+N.ofNuevas+' oferta'+(N.ofNuevas>1?'s nuevas detectadas':' nueva detectada')+'</b> en estos archivos: quedaron registradas en Administración → Ofertas para que las categorices como virtual o no. Mientras tanto se desglosan solo las de facturas y pedidos que tengan composición.</div>';
     if(!N.rep) h+='<div class="empty">Calculando el reparto…</div>';
     else {
       var aux=Object.keys(N.rep.por);
@@ -1102,7 +1159,7 @@ ACT.nvarchivos=function(){
     if(!todas.length){ toast(err[0]||"No hay líneas para cargar"); return; }
     var co=esAdmin()?(coDeBodega((todas.filter(function(l){ return l.bod; })[0]||{}).bod)||S.coSel):S.me.co;
     NUEVA={ok:true,raw:todas,archivos:detalle,omitidos:omit,errores:err,tipos:resumenTipos(todas),iguales:mismosProductos(todas),co:co,titulo:"Alistamiento "+hoy(),rep:null};
-    cargarBase(false,co).catch(function(){}).then(function(){ armarNuevaAli(); render(); repartirNueva(); });
+    cargarBase(false,co).catch(function(){}).then(function(){ return registrarOfertas(todas,"listado",co).catch(function(){ return 0; }); }).then(function(nuevas){ NUEVA.ofNuevas=nuevas||0; armarNuevaAli(); render(); repartirNueva(); });
   });
 };
 function armarNuevaAli(){
@@ -1180,7 +1237,7 @@ function abrirSinAsignar(titulo,its,co,alTerminar){
 ACT.versin=async function(){
   try{
     var r=await DB.get("ops_tareas",SESV.id+"--SIN"); if(!r){ toast("Ya no hay referencias sin asignar"); cargarSes(); return; }
-    var its=(r.datos.items||[]).map(function(a){ return {ref:a[0],desc:a[1],qty:a[4],zona:a[9]||"",seq:a[8]||0,extra:[a[5],a[6]].filter(Boolean).join(" · ")}; }), sid=SESV.id, co=SESV.ses.co;
+    var its=(r.datos.items||[]).map(function(a){ return {ref:a[0],desc:a[1],qty:a[4],zona:a[9]||"",seq:a[8]||0,extra:(/^OF/i.test(a[0])?"OFERTA"+(S.ofr[String(a[0]).toUpperCase()]?" (tiene composición: se puede desglosar)":" sin composición cargada: no se pudo desglosar")+" · ":"")+[a[5],a[6]].filter(Boolean).join(" · ")}; }), sid=SESV.id, co=SESV.ses.co;
     abrirSinAsignar("Sin asignar",its,co,async function(lista){
       var por={}; lista.forEach(function(x){ (por[x.aux]=por[x.aux]||{}); por[x.aux][x.ref]=1; });
       var sinD=await DB.get("ops_tareas",sid+"--SIN"); if(!sinD) return; var rest=[];
