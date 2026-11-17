@@ -324,9 +324,9 @@ function copiar(t){
   if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(function(){ toast("Código copiado"); },function(){ toast("No se pudo copiar"); }); }
   else { var x=document.createElement("textarea"); x.value=t; document.body.appendChild(x); x.select(); try{ document.execCommand("copy"); toast("Código copiado"); }catch(e){} x.remove(); }
 }
-function pedirArchivo(accept,cb){
-  var i=document.createElement("input"); i.type="file"; i.accept=accept; i.style.display="none"; document.body.appendChild(i);
-  i.onchange=function(){ var f=i.files&&i.files[0]; i.remove(); if(f) cb(f); }; i.click();
+function pedirArchivo(accept,cb,multiple){
+  var i=document.createElement("input"); i.type="file"; i.accept=accept; if(multiple) i.multiple=true; i.style.display="none"; document.body.appendChild(i);
+  i.onchange=function(){ var fs=Array.prototype.slice.call(i.files||[]); i.remove(); if(!fs.length) return; if(multiple) cb(fs); else cb(fs[0]); }; i.click();
 }
 function leerTexto(f){ return new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){ res(r.result); }; r.onerror=rej; r.readAsText(f); }); }
 
@@ -536,8 +536,10 @@ var NUEVA={};
 VIEWS.nueva=function(){
   topbar("Nueva sesión","Cargar archivo",true);
   var h='<h1>Nueva sesión</h1>';
-  h+='<div class="card gold"><b>1. Archivo de facturas o pedidos</b><p class="small muted">Se usan solo las columnas de producto y cantidad (Referencia, Descripción, Código de barras, Factor U.M., Cantidad, Bodega y, si vienen, Grupo Shopper y Línea proveedor). Todo lo demás se descarta.</p><button class="btn block" data-act="cargalin">Elegir Excel</button>';
+  h+='<div class="card gold"><b>1. Archivo de facturas o pedidos</b><p class="small muted">Se usan solo las columnas de producto y cantidad (Referencia, Descripción, Código de barras, Factor U.M., Cantidad, Bodega y, si vienen, Grupo Shopper y Línea proveedor). Todo lo demás se descarta. Puede elegir <b>varios archivos a la vez</b>; si un documento viene repetido, se cuenta una sola vez.</p><button class="btn block" data-act="cargalin">Elegir Excel (uno o varios)</button>';
   if(NUEVA.ok){
+    if(NUEVA.archivos&&NUEVA.archivos.length>1) h+='<div class="hint" style="margin-top:10px"><b>'+NUEVA.archivos.length+' archivos cargados</b>'+NUEVA.archivos.map(function(a){ return '<br>• '+esc(a.n)+' — '+nf(a.l)+' líneas · '+nf(a.d)+' documentos'; }).join("")+(NUEVA.omitidos?'<br><b>'+NUEVA.omitidos+' documentos repetidos</b> entre archivos: se contaron una sola vez.':'')+'</div>';
+    if(NUEVA.errores&&NUEVA.errores.length) h+='<div class="hint warn" style="margin-top:8px"><b>No se pudieron usar:</b><br>'+NUEVA.errores.map(function(e){ return '• '+esc(e); }).join("<br>")+'</div>';
     h+='<div class="hint" style="margin-top:10px"><b>'+esc(NUEVA.nombre)+'</b><br>Filas con producto: <b>'+nf(NUEVA.lineas.length)+'</b> · Documentos: <b>'+nf(NUEVA.docs)+'</b><br>Referencias distintas: <b>'+nf(NUEVA.refs)+'</b> · Unidades: <b>'+nf(NUEVA.unid)+'</b>'+
       (NUEVA.des&&NUEVA.des.nOF?'<br>Ofertas desglosadas: <b>'+NUEVA.des.nOF+'</b> → '+NUEVA.des.nComp+' líneas de componentes':'')+'</div>';
     var sin=Object.keys(NUEVA.des?NUEVA.des.sin:{});
@@ -703,7 +705,7 @@ VIEWS["desp-sup"]=function(){
   var D=S.desp, mi=maeInfo();
   var h='<h1>Despacho</h1><div class="hint">El coordinador decide qué va en cada vehículo: la app solo recibe la <b>planilla</b> (placa + facturas), arma el listado consolidado de cada vehículo (el "segundo alistamiento") y al final dice si se aprovechó la capacidad.</div>';
   h+='<div class="card gold"><b>1. Planilla de despacho</b><p class="small muted">Excel con Número, Fecha, Número factura, Vehículo (y Estado). Se descarta todo lo demás (transportador, cliente, valores).</p><div class="row"><span class="chip ok">'+nf(D.planillas.length)+' planillas</span></div><div class="sp"></div><button class="btn block" data-act="cargapla">Cargar planilla (Excel)</button></div>';
-  h+='<div class="card gold"><b>2. Líneas de las facturas</b><p class="small muted">Excel(s) con Nro documento, Referencia, Descripción, Código de barras, Factor U.M. y Cantidad. Puede cargar varios archivos.</p><div class="row"><span class="chip ok">'+nf(Object.keys(D.lineas).length)+' facturas con líneas</span></div>'+D.archivos.map(function(a,i){ return '<div class="small muted" style="margin-top:6px">• '+esc(a.n)+' — '+a.f+' facturas</div>'; }).join("")+'<div class="sp"></div><button class="btn block" data-act="cargafac">Cargar facturas (Excel)</button></div>';
+  h+='<div class="card gold"><b>2. Líneas de las facturas</b><p class="small muted">Excel(s) con Nro documento, Referencia, Descripción, Código de barras, Factor U.M. y Cantidad. Puede elegir varios archivos a la vez.</p><div class="row"><span class="chip ok">'+nf(Object.keys(D.lineas).length)+' facturas con líneas</span></div>'+D.archivos.map(function(a,i){ return '<div class="small muted" style="margin-top:6px">• '+esc(a.n)+' — '+a.f+' facturas</div>'; }).join("")+'<div class="sp"></div><button class="btn block" data-act="cargafac">Cargar facturas (Excel)</button></div>';
   if(!mi.n) h+='<div class="hint warn">Sin maestro: el peso y volumen no se calcularán. Cárguelo en Datos de apoyo.</div>';
   if(D.planillas.length){
     var cal=planillasCalc(), fechas=uniq(cal.map(function(c){ return c.pl.fecha; })).sort();
@@ -756,6 +758,12 @@ function pegarCodigo(titulo,cb){
   $("#pcOk",bg).onclick=function(){ var t=$("#pc",bg).value; cerrarSheet(); decodificar(t).then(cb).catch(function(e){ toast(e.message||"Código no válido"); }); };
 }
 function textoDeArchivo(cb){ pedirArchivo(".txt,.json,text/plain,application/json",function(f){ leerTexto(f).then(function(t){ return decodificar(t); }).then(cb).catch(function(e){ toast(e.message||"Archivo no válido"); }); }); }
+/* Varios Excel a la vez: cb recibe [{wb,f}, ...] */
+function elegirExcels(cb){
+  pedirArchivo(".xlsx,.xlsm,.xls,.csv",function(fs){
+    Promise.all(fs.map(function(f){ return leerExcel(f).then(function(wb){ return {wb:wb,f:f}; },function(){ toast("No se pudo leer "+f.name); return null; }); })).then(function(l){ l=l.filter(Boolean); if(l.length) cb(l); });
+  },true);
+}
 function elegirExcel(cb){ pedirArchivo(".xlsx,.xlsm,.xls,.csv",function(f){ leerExcel(f).then(function(wb){ cb(wb,f); }).catch(function(e){ toast("No se pudo leer el Excel: "+(e.message||e)); }); }); }
 function reintentoLista(p,nube){ try{ TR={q:"",f:"pend",g:""}; var id=importarLista(p,nube); toast("Lista recibida: "+(p.titulo||p.nom)); var i=S.mis.findIndex(function(m){ return m.id===id; }); reset("menu"); go("mis",{t:p.t==="desp"?"desp":"ali"}); go("trab",{i:i}); }catch(e){ toast(e.message); } }
 
@@ -776,11 +784,22 @@ document.addEventListener("click",function(e){
     case "cargaof": elegirExcel(function(wb){ var t=tablaDe(wb,["codigo ofera","codigo oferta","oferta"],"OFERTAS"); if(!t){ toast("No se encontró la composición de ofertas"); return; } try{ var r=cargarOfertas(t); S.ofertas=r.of; if(save("ofertas")){ toast(nf(r.ofertas)+" ofertas · "+nf(r.n)+" componentes"); render(); } }catch(x){ toast(x.message); } }); break;
     /* alistamiento */
     case "nueva": NUEVA={}; go("nueva"); break;
-    case "cargalin": elegirExcel(function(wb,f){ var t=tablaDe(wb,["referencia"],"DATOS"); if(!t){ toast("No se encontró la columna Referencia"); return; }
-      try{ var r=parseLineas(t), des=desglosar(r.lineas), bods=uniq(des.lineas.map(function(l){ return l.bod; }).filter(Boolean)).sort();
-        var refs={},un=0; des.lineas.forEach(function(l){ refs[l.ref]=1; un+=l.cant; });
-        NUEVA={ok:true,nombre:f.name,lineas:des.lineas,des:des,docs:r.docs,refs:Object.keys(refs).length,unid:un,bodegas:bods,selBod:bods.slice(),titulo:"Alistamiento "+hoy()};
-        render(); }catch(x){ toast(x.message); } }); break;
+    case "cargalin": elegirExcels(function(lista){
+      var todas=[],vistos={},omit=0,detalle=[],err=[];
+      lista.forEach(function(it){
+        var t=tablaDe(it.wb,["referencia"],"DATOS"); if(!t){ err.push(it.f.name+": no se encontró la columna Referencia"); return; }
+        var r; try{ r=parseLineas(t); }catch(x){ err.push(it.f.name+": "+x.message); return; }
+        var propios={}; r.lineas.forEach(function(l){ if(l.doc) propios[l.doc]=1; });
+        var repetidos={},nRep=0; Object.keys(propios).forEach(function(dc){ if(vistos[dc]){ repetidos[dc]=1; nRep++; } });
+        var aport=0; r.lineas.forEach(function(l){ if(l.doc&&repetidos[l.doc]) return; todas.push(l); aport++; });
+        Object.keys(propios).forEach(function(dc){ vistos[dc]=1; });
+        omit+=nRep; detalle.push({n:it.f.name,l:aport,d:Object.keys(propios).length-nRep});
+      });
+      if(!todas.length){ toast(err[0]||"No hay líneas para cargar"); return; }
+      var des=desglosar(todas), bods=uniq(des.lineas.map(function(l){ return l.bod; }).filter(Boolean)).sort(), refs={},un=0;
+      des.lineas.forEach(function(l){ refs[l.ref]=1; un+=l.cant; });
+      NUEVA={ok:true,nombre:lista.length>1?lista.length+" archivos":lista[0].f.name,lineas:des.lineas,des:des,docs:Object.keys(vistos).length,refs:Object.keys(refs).length,unid:un,bodegas:bods,selBod:bods.slice(),titulo:"Alistamiento "+hoy(),archivos:detalle,omitidos:omit,errores:err};
+      render(); }); break;
     case "togbod": var b=d("b"), ix=NUEVA.selBod.indexOf(b); if(ix>=0) NUEVA.selBod.splice(ix,1); else NUEVA.selBod.push(b); render(); break;
     case "crearses": var nom=($("#sn").value||"").trim()||NUEVA.titulo, its=consolidar(NUEVA.lineas,NUEVA.selBod);
       if(!its.length){ toast("No hay referencias para la sesión"); break; }
@@ -824,16 +843,23 @@ document.addEventListener("click",function(e){
         var pl=mp[num]; if(!pl){ pl=mp[num]={num:num,fecha:fecha,placa:placa,facs:[]}; orden.push(num); } if(pl.facs.indexOf(fac)<0) pl.facs.push(fac); });
       S.desp.planillas=orden.map(function(k){ return mp[k]; }).sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:(+x.num)-(+y.num); });
       if(save("desp")){ toast(S.desp.planillas.length+" planillas"+(anul?" ("+anul+" anuladas omitidas)":"")); render(); } }); break;
-    case "cargafac": elegirExcel(function(wb,f){ var t=tablaDe(wb,["referencia"],"Sheet1"); if(!t){ toast("No se encontró la columna Referencia"); return; }
-      try{ var r=parseLineas(t), m=r.cols; if(m.doc<0){ toast("El archivo debe traer la columna Nro documento"); return; }
-        var rows=t.rows, nuevas={},omit={},cnt=0;
-        rows.forEach(function(row){ var ref=normRef(row[m.ref]), doc=String(row[m.doc]||"").trim(), cant=parseDbl(row[m.cant]); if(!ref||!doc||!(cant>0)) return;
-          if(S.desp.lineas[doc]){ omit[doc]=1; return; }
-          (nuevas[doc]=nuevas[doc]||[]).push([ref,m.desc>=0?String(row[m.desc]||"").trim():"",m.bar>=0?normBar(row[m.bar]):"",m.ue>=0?ueDe(row[m.ue]):0,cant]); });
-        var dup=Object.keys(omit).length;
-        /* desglose de ofertas dentro de cada factura */
-        Object.keys(nuevas).forEach(function(doc){ var ls=nuevas[doc].map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],cant:a[4],bod:"",grupo:"",linea:"",doc:doc}; }); var dd=desglosar(ls); S.desp.lineas[doc]=dd.lineas.map(function(l){ return [l.ref,l.desc,l.bar,l.ue,l.cant]; }); cnt++; });
-        S.desp.archivos.push({n:f.name,f:cnt}); if(save("desp")){ toast(cnt+" facturas cargadas"+(dup?" · "+dup+" repetidas omitidas":"")); render(); } }catch(x){ toast(x.message); } }); break;
+    case "cargafac": elegirExcels(function(lista){
+      var tot=0,dupT=0,nArch=0,err=[];
+      lista.forEach(function(it){
+        var t=tablaDe(it.wb,["referencia"],"Sheet1"); if(!t){ err.push(it.f.name); return; }
+        try{
+          var r=parseLineas(t), m=r.cols; if(m.doc<0){ err.push(it.f.name+" (sin Nro documento)"); return; }
+          var nuevas={},omit={},cnt=0;
+          t.rows.forEach(function(row){ var ref=normRef(row[m.ref]), doc=String(row[m.doc]||"").trim(), cant=parseDbl(row[m.cant]); if(!ref||!doc||!(cant>0)) return;
+            if(S.desp.lineas[doc]){ omit[doc]=1; return; }
+            (nuevas[doc]=nuevas[doc]||[]).push([ref,m.desc>=0?String(row[m.desc]||"").trim():"",m.bar>=0?normBar(row[m.bar]):"",m.ue>=0?ueDe(row[m.ue]):0,cant]); });
+          /* desglose de ofertas dentro de cada factura */
+          Object.keys(nuevas).forEach(function(doc){ var ls=nuevas[doc].map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],cant:a[4],bod:"",grupo:"",linea:"",doc:doc}; }); var dd=desglosar(ls); S.desp.lineas[doc]=dd.lineas.map(function(l){ return [l.ref,l.desc,l.bar,l.ue,l.cant]; }); cnt++; });
+          S.desp.archivos.push({n:it.f.name,f:cnt}); tot+=cnt; dupT+=Object.keys(omit).length; nArch++;
+        }catch(x){ err.push(it.f.name+": "+x.message); }
+      });
+      if(save("desp")){ toast(tot+" facturas cargadas"+(lista.length>1?" de "+nArch+" archivos":"")+(dupT?" · "+dupT+" repetidas omitidas":"")+(err.length?" · con problemas: "+err.join(", "):"")); render(); }
+    }); break;
     case "dfecha": DF.fecha=d("f"); render(); break;
     case "abrirpl": go("placa",{i:+d("i")}); break;
     case "plfile": case "plcode": case "plwork":
