@@ -868,12 +868,18 @@ VIEWS.matriz=function(){
   Object.keys(por).sort(function(a,b){ return por[b].n-por[a].n; }).forEach(function(a){
     h+='<div class="card gold"><div class="who"><div class="avatar">'+esc(iniciales(nombreDe(a)))+'</div><div class="grow"><b>'+esc(nombreDe(a))+'</b><div class="small muted">'+Object.keys(por[a].z).map(function(z){ return esc(z)+' · '+por[a].z[z]; }).join(' · ')+'</div></div><b class="mono">'+nf(por[a].n)+'</b></div></div>';
   });
-  if(sin) h+='<div class="card"><b>Sin auxiliar asignado</b>: '+nf(sin)+' referencias'+(fuera?' (de ellas '+nf(fuera)+' "fuera del sistema")':'')+'</div>';
+  if(sin) h+='<div class="card"><b>Sin auxiliar asignado</b>: '+nf(sin)+' referencias'+(fuera?' (de ellas '+nf(fuera)+' "fuera del sistema")':'')+'<div class="sp"></div><button class="btn ghost sm" data-act="mzsin">Ver y asignar las '+nf(sin)+'</button></div>';
   h+='<div class="sp"></div><button class="btn gold block" data-act="mzcargar">Cargar matriz (Excel de zonas)</button>';
   if(MZ.plan) h+=planMatrizHtml(co);
   app(h);
 };
 ACT.mzco=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); abrirMatriz(); render(); };
+ACT.mzsin=function(){
+  var co=coActual(), M=S.matriz[co]||{};
+  var its=Object.keys(M).filter(function(r){ return !M[r].auxiliarId; }).sort(ordenRef).slice(0,300).map(function(r){ return {ref:r,desc:M[r].descItem||"",zona:M[r].zona||"",seq:M[r].secuencia||0,extra:M[r].zona||""}; });
+  if(!its.length){ toast("No hay referencias sin auxiliar"); return; }
+  abrirSinAsignar("Sin auxiliar en la matriz",its,co,null);
+};
 ACT.mzcargar=function(){
   elegirExcel(function(wb,f){
     var t=tablaDe(wb,["referencia"],"Zonas"); if(!t){ toast("No se encontró la columna Referencia"); return; }
@@ -1145,14 +1151,51 @@ VIEWS.ses=function(){
   h+='<div class="sp"></div><button class="btn red sm" data-act="eliminarses">Eliminar sesión</button>';
   app(h);
 };
+/* Escribe en la matriz del C.O. (la misma de Semaforos): crea la linea si no existe o actualiza el auxiliar si ya existe */
+async function guardarEnMatriz(co,lista){
+  var M=await cargarMatriz(co,true), nuevos=[];
+  for(var i=0;i<lista.length;i++){
+    var x=lista[i], prev=M[x.ref];
+    if(prev){ await DB.patch("matrices/"+co+"/lineas",x.ref,{auxiliarId:x.aux,actualizadoEn:ahora(),actualizadoPor:S.me.id}); prev.auxiliarId=x.aux; }
+    else nuevos.push({id:x.ref,datos:{referencia:x.ref,descItem:x.desc||"",zona:x.zona||"",ubicacion:"",secuencia:x.seq||0,auxiliarId:x.aux,actualizadoEn:ahora(),actualizadoPor:S.me.id}});
+  }
+  if(nuevos.length){ await DB.setMany("matrices/"+co+"/lineas",nuevos); nuevos.forEach(function(n){ M[n.id]=n.datos; }); }
+}
+/* Lista de referencias sin auxiliar: asignar a un auxiliar y, si se quiere, dejarlas en la matriz para las proximas sesiones */
+function abrirSinAsignar(titulo,its,co,alTerminar){
+  var ops=usuariosDe(co,"operario").concat(usuariosDe(co,"coordinador")), opt='<option value="">— Elegir auxiliar —</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">'+esc(u.nombre)+'</option>'; }).join("");
+  var bg=abrirSheet('<h3>'+esc(titulo)+' · '+its.length+' referencias</h3><p class="small muted">Elige el auxiliar de cada referencia, o el mismo para todas arriba.</p>'+
+    '<div class="row"><select id="vsAll" class="grow">'+opt+'</select><button class="btn ghost sm" id="vsApl">Aplicar a todas</button></div><div class="sp"></div>'+
+    its.map(function(a,i){ return '<div class="card"><b>'+esc(a.ref)+'</b>'+(a.qty!=null?' · <span class="mono">'+esc(nf(a.qty))+' und</span>':'')+'<div class="small muted">'+esc(a.desc||"")+'</div><div class="small muted">'+esc(a.extra||"")+'</div><select class="vsOne" data-i="'+i+'">'+opt+'</select></div>'; }).join("")+
+    '<div class="sp"></div><button class="btn gold block" id="vsOk">Guardar en la matriz'+(alTerminar?' y asignar a la sesión':'')+'</button><div class="sp"></div><button class="btn ghost block" id="vsX">Cerrar</button>');
+  $("#vsX",bg).onclick=cerrarSheet;
+  $("#vsApl",bg).onclick=function(){ var v=$("#vsAll",bg).value; $$(".vsOne",bg).forEach(function(s){ s.value=v; }); };
+  $("#vsOk",bg).onclick=async function(){
+    var lista=[]; $$(".vsOne",bg).forEach(function(s){ if(s.value){ var a=its[+s.getAttribute("data-i")]; lista.push({ref:a.ref,desc:a.desc,zona:a.zona,seq:a.seq,aux:s.value}); } });
+    if(!lista.length){ toast("Elige al menos un auxiliar"); return; }
+    try{ await guardarEnMatriz(co,lista); if(alTerminar) await alTerminar(lista); cerrarSheet(); toast(lista.length+" referencias guardadas en la matriz"); var c=cur(); if(c&&c.v==="matriz"){ render(); } }
+    catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
+  };
+}
 ACT.versin=async function(){
   try{
     var r=await DB.get("ops_tareas",SESV.id+"--SIN"); if(!r){ toast("Ya no hay referencias sin asignar"); cargarSes(); return; }
-    var its=r.datos.items||[];
-    abrirSheet('<h3>Sin asignar · '+its.length+' referencias</h3><p class="small muted">No están en la matriz de este C.O. Agrégalas en Matriz o asígnalas a un auxiliar.</p>'+
-      its.map(function(a){ return '<div class="card"><b>'+esc(a[0])+'</b> · <span class="mono">'+esc(nf(a[4]))+' und</span><div class="small muted">'+esc(a[1]||"")+'</div><div class="small muted">'+esc([a[5],a[6]].filter(Boolean).join(" · "))+(a[7]?' · '+esc(a[7]):'')+'</div></div>'; }).join("")+
-      '<div class="sp"></div><button class="btn ghost block" id="vsX">Cerrar</button>');
-    var b=$("#vsX"); if(b) b.onclick=cerrarSheet;
+    var its=(r.datos.items||[]).map(function(a){ return {ref:a[0],desc:a[1],qty:a[4],zona:a[9]||"",seq:a[8]||0,extra:[a[5],a[6]].filter(Boolean).join(" · ")}; }), sid=SESV.id, co=SESV.ses.co;
+    abrirSinAsignar("Sin asignar",its,co,async function(lista){
+      var por={}; lista.forEach(function(x){ (por[x.aux]=por[x.aux]||{}); por[x.aux][x.ref]=1; });
+      var sinD=await DB.get("ops_tareas",sid+"--SIN"); if(!sinD) return; var rest=[];
+      for(var aux in por){
+        var mover=sinD.datos.items.filter(function(a){ return por[aux][a[0]]; }); if(!mover.length) continue;
+        var tgt=await DB.get("ops_tareas",sid+"--"+aux), d;
+        if(tgt){ d=tgt.datos; d.items=d.items.concat(mover); }
+        else { d=Object.assign({},sinD.datos,{asignadoId:aux,asignadoNombre:nombreDe(aux),items:mover,e:[],ok:0,parc:0,no:0,iniciadoEn:null,finalizadoEn:null}); }
+        d.items.sort(function(a,b){ return ((a[8]||1e9)-(b[8]||1e9))||ordenRef(a[0],b[0]); }); d.total=d.items.length; d.estado=calcEstado(d.total,d.ok+d.parc+d.no); d.actualizadoEn=ahora();
+        await DB.set("ops_tareas",sid+"--"+aux,d);
+      }
+      var movidas={}; lista.forEach(function(x){ movidas[x.ref]=1; }); rest=sinD.datos.items.filter(function(a){ return !movidas[a[0]]; });
+      if(rest.length){ sinD.datos.items=rest; sinD.datos.total=rest.length; sinD.datos.actualizadoEn=ahora(); await DB.set("ops_tareas",sid+"--SIN",sinD.datos); } else await DB.del("ops_tareas",sid+"--SIN");
+      cargarSes();
+    });
   }catch(e){ toast("No se pudo cargar: "+(e.message||e)); }
 };
 ACT.asignarsin=async function(){
