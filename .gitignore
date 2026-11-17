@@ -1,0 +1,8 @@
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+*.zip
+*.pdf
+*.docx
+.env
