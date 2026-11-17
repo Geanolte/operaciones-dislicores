@@ -338,7 +338,16 @@ function colMap(hdr,alias){
 }
 var A_LIN={ref:["referencia"],desc:["desc. item","descripcion","descripcion item","desc item"],bar:["codigo barra principal","codigo barras principal","codigo de barras principal","cod ean","codigo de barras"],ue:["factor u.m. emp.","factor u.m. empaque","u.m. emp.","u.m. empaque","u.e","unidad empaque"],cant:["cantidad","cant. comprom.","cant. comprometida","salidas (inv.)","cant"],bod:["bodega"],grupo:["grupo shopper"],linea:["linea proveedor"],doc:["nro documento","documento","numero factura","factura"]};
 var A_MAE={ref:["referencia"],desc:["descripcion","desc. item"],bar:["codigo de barras","codigo barra principal"],ue:["factor u.m.","factor u.m. emp."],grupo:["grupo shopper"],linea:["linea proveedor"],peso:["001-peso individual"],vi:["001-volumen individual"],ae:["001-ancho embalaje"],he:["001-alto embalaje"],pe:["001-profundidad embalaje"]};
-var A_OF={of:["codigo ofera","codigo oferta","oferta"],odesc:["descripcion oferta","descripcion de la oferta"],comp:["codigo producto","componente"],cdesc:["descripcion producto","descripcion componente"],cant:["cantidad oferta","cant.","cant","cantidad"]};
+/* Composicion: acepta el formato de la app de picking / ERP (Referencia, Desc. Item, Referencia comp., Desc. item comp., Cantidad Requerida) y el formato de la macro */
+var A_OF={of:["codigo ofera","codigo oferta","oferta","referencia"],odesc:["descripcion oferta","descripcion de la oferta","desc. item","desc item"],comp:["codigo producto","componente","referencia comp.","referencia comp","referencia componente"],cdesc:["descripcion producto","descripcion componente","desc. item comp.","desc. item comp","desc item comp","descripcion item comp"],cant:["cantidad oferta","cant.","cant","cantidad","cantidad requerida"]};
+var CLAVES_OF=["codigo ofera","codigo oferta","oferta","referencia comp.","referencia comp","referencia componente"];
+/* Una referencia es oferta si su codigo empieza por OF, o su descripcion empieza por "OF" (OF., OF 2…), o ya esta registrada/marcada en la base de ofertas */
+function esOferta(ref,desc){
+  var r=String(ref||"").toUpperCase(); if(/^OF/.test(r)) return true;
+  if(S.cat[r]) return true;
+  for(var co in S.desg){ if(S.desg[co][r]!==undefined) return true; }
+  return /^OF[\s.\d]/i.test(String(desc||"").trim());
+}
 var A_PLA={num:["numero"],fecha:["fecha"],fac:["numero factura"],veh:["vehiculo"],est:["estado"]};
 var A_MTZ={ref:["referencia"],desc:["descripcion","desc. item","descripcion item"],zona:["zona","piso"],seq:["secuencia"],flag:["desglosar_oferta","desglosar oferta","desglosar"],ubic:["ubicacion"],aux:["auxiliar","operario","alistador"]};
 
@@ -417,15 +426,15 @@ function desgloseDe(code,co){
 /* Toda oferta que aparezca en un listado o en una composicion queda registrada en la base de ofertas (sin categorizar) para validarla */
 async function registrarOfertas(items,origen,co){
   var nuevos=[], vistos={};
-  items.forEach(function(x){ var code=String(x.ref||x.code||"").toUpperCase(); if(!/^OF/i.test(code)||vistos[code]||S.cat[code]) return; vistos[code]=1; nuevos.push({id:code,datos:{codigo:code,desc:x.desc||"",virtual:null,origen:origen,detectadoCo:co||"",detectadoEn:ahora(),detectadoPor:S.me?S.me.id:""}}); });
+  items.forEach(function(x){ var code=String(x.ref||x.code||"").toUpperCase(); if(!code||vistos[code]||S.cat[code]||!(x.forzar||esOferta(code,x.desc))) return; vistos[code]=1; nuevos.push({id:code,datos:{codigo:code,desc:x.desc||"",virtual:null,origen:origen,detectadoCo:co||"",detectadoEn:ahora(),detectadoPor:S.me?S.me.id:""}}); });
   if(!nuevos.length) return 0;
   await DB.setMany("ofertas_cat",nuevos); nuevos.forEach(function(n){ S.cat[n.id]=n.datos; }); return nuevos.length;
 }
 function desglosar(lineas,co){
-  var ueArch={}; lineas.forEach(function(l){ if(!/^OF/i.test(l.ref)&&l.ue>0&&!ueArch[l.ref]) ueArch[l.ref]=l.ue; });
+  var ueArch={}; lineas.forEach(function(l){ if(!esOferta(l.ref,l.desc)&&l.ue>0&&!ueArch[l.ref]) ueArch[l.ref]=l.ue; });
   var out=[], sin={}, nOF=0, nComp=0, dejadas=0;
   lineas.forEach(function(l){
-    if(!/^OF/i.test(l.ref)){ out.push(l); return; }
+    if(!esOferta(l.ref,l.desc)){ out.push(l); return; }
     var code=l.ref.toUpperCase(), flag=desgloseDe(code,co).v; if(flag===null) flag=undefined;
     var quiere=(flag===true)||(flag===undefined&&(l.t==="FAC"||l.t==="PED"||!l.t));
     var comp=S.ofr[code];
@@ -885,7 +894,7 @@ VIEWS.matriz=function(){
     h+='<div class="card gold"><div class="who"><div class="avatar">'+esc(iniciales(nombreDe(a)))+'</div><div class="grow"><b>'+esc(nombreDe(a))+'</b><div class="small muted">'+Object.keys(por[a].z).map(function(z){ return esc(z)+' · '+por[a].z[z]; }).join(' · ')+'</div></div><b class="mono">'+nf(por[a].n)+'</b></div></div>';
   });
   if(sin) h+='<div class="card"><b>Sin auxiliar asignado</b>: '+nf(sin)+' referencias'+(fuera?' (de ellas '+nf(fuera)+' "fuera del sistema")':'')+'<div class="sp"></div><button class="btn ghost sm" data-act="mzsin">Ver y asignar las '+nf(sin)+'</button></div>';
-  h+='<div class="sp"></div><button class="btn gold block" data-act="mzcargar">Cargar matriz (Excel de zonas)</button>';
+  h+='<div class="sp"></div><button class="btn gold block" data-act="mzcargar">Cargar matriz (Excel de zonas)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="zonas">Descargar plantilla</button>';
   if(MZ.plan) h+=planMatrizHtml(co);
   app(h);
 };
@@ -949,7 +958,8 @@ ACT.mzaplicar=async function(){
 /* ---------- ofertas: base unica de las 5 ciudades. Categoria global (virtual SI/NO) + excepcion por ciudad + composicion ---------- */
 var OF={filtro:"todas",q:""};
 function ofertasLista(){
-  var set={}; Object.keys(S.ofr).forEach(function(k){ set[k]=1; }); Object.keys(S.cat).forEach(function(k){ set[k]=1; });
+  /* Con composicion solo cuentan las que son oferta (codigo OF… o descripcion "OF…"): los empaques tipo "bulto x 12" no se listan salvo que se categoricen */
+  var set={}; Object.keys(S.ofr).forEach(function(k){ if(esOferta(k,S.ofr[k].desc)) set[k]=1; }); Object.keys(S.cat).forEach(function(k){ set[k]=1; });
   Object.keys(S.desg).forEach(function(co){ Object.keys(S.desg[co]).forEach(function(k){ set[k]=1; }); });
   return Object.keys(set).sort(ordenRef);
 }
@@ -975,8 +985,9 @@ VIEWS.ofertas=function(){
     var ciu=CIUDADES.map(function(ci){ var d=desgloseDe(k,ci.co); return ci.nombre.slice(0,3).toUpperCase()+' '+(d.v===true?'✔':d.v===false?'✖':'·'); }).join(' · ');
     return '<button class="task" data-act="ofabrir" data-k="'+esc(k)+'"><div class="tt"><b class="mono">'+esc(k)+'</b><span class="chip '+(t==="virtual"?"st-ok":t==="no"?"":"st-nov")+'">'+(t==="virtual"?"Virtual":t==="no"?"No virtual":"Sin categorizar")+'</span></div><div class="sub">'+esc(ofDesc(k))+'</div><div class="mini"><span class="chip">'+(c?'✔ '+c.comps.length+' componentes':'✖ sin composición')+'</span></div><div class="small muted" style="margin-top:4px">Desglosa: '+ciu+'</div></button>';
   }).join("");
-  h+='<div class="sp"></div><div class="card gold"><b>Composición de ofertas</b><p class="small muted">Excel con OFERTA (o CODIGO OFERA), COMPONENTE (o CODIGO PRODUCTO) y CANT. Puede ser la exportación de "Composición de ofertas" de la app de picking. Reemplaza la composición de las ofertas que vengan en el archivo y registra las nuevas.</p><button class="btn block" data-act="ofcomp">Cargar composición (Excel)</button></div>';
-  h+='<div class="card gold"><b>Excepciones por ciudad</b><p class="small muted">Excel de zonas con la columna Desglosar_Oferta (SI/NO). Se aplican al C.O. '+esc(coActual())+' como excepción de esa ciudad.</p><button class="btn block" data-act="ofmarcas">Cargar marcas (Excel)</button></div>';
+  h+='<div class="sp"></div><div class="card gold"><b>Composición de ofertas</b><p class="small muted">Excel con OFERTA (o CODIGO OFERA), COMPONENTE (o CODIGO PRODUCTO) y CANT. Puede ser la exportación de "Composición de ofertas" de la app de picking. Reemplaza la composición de las ofertas que vengan en el archivo y registra las nuevas. Acepta el mismo formato de la pantalla "Composición de ofertas" de la app de picking (Referencia, Desc. Item, Referencia comp., Desc. item comp., Cantidad Requerida).</p><button class="btn block" data-act="ofcomp">Cargar composición (Excel)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="composicion">Descargar plantilla</button></div>';
+  h+='<div class="card gold"><b>Categorías de ofertas</b><p class="small muted">Excel con Referencia, Descripcion y Virtual (SI/NO); opcionalmente una columna por ciudad (Pereira, Armenia…) con la excepción SI/NO. Reemplaza la categoría de lo que venga en el archivo.</p><button class="btn block" data-act="ofcat">Cargar categorías (Excel)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="categorias">Descargar plantilla</button></div>';
+  h+='<div class="card gold"><b>Categorizar desde el Excel de zonas</b><p class="small muted">Usa la columna Desglosar_Oferta (SI/NO) del Excel de zonas para categorizar las ofertas que aún no tienen categoría (SI = virtual). No cambia las que ya están categorizadas.</p><button class="btn block" data-act="ofmarcas">Cargar desde Excel de zonas</button></div>';
   app(h);
   var q=$("#ofq"); if(q){ q.oninput=function(){ OF.q=q.value; var pos=q.selectionStart; render(); var q2=$("#ofq"); if(q2){ q2.focus(); try{ q2.setSelectionRange(pos,pos); }catch(e){} } }; }
 };
@@ -1002,24 +1013,68 @@ ACT.ofabrir=function(el,d){
 };
 ACT.ofcomp=function(){
   elegirExcel(async function(wb){
-    var t=tablaDe(wb,["codigo ofera","codigo oferta","oferta"],"OFERTAS"); if(!t){ toast("No se encontró la composición de ofertas"); return; }
+    var t=tablaDe(wb,CLAVES_OF,"Ofertas"); if(!t){ toast("No se encontró la composición de ofertas (columnas Referencia, Referencia comp. y Cantidad Requerida)"); return; }
     var r; try{ r=parseComposicion(t); }catch(e){ toast(e.message); return; }
-    if(!confirm("Se cargarán "+r.ofertas+" ofertas ("+r.n+" componentes) en la base compartida. ¿Continuar?")) return;
-    try{ toast("Guardando ofertas…",5000); await DB.setMany("ofertas",Object.keys(r.of).map(function(k){ return {id:k,datos:{desc:r.of[k].desc,comps:r.of[k].comps}}; })); await cargarBase(); var nv=await registrarOfertas(Object.keys(r.of).map(function(k){ return {ref:k,desc:r.of[k].desc}; }),"composición",coActual()); toast(r.ofertas+" ofertas guardadas"+(nv?" · "+nv+" nuevas por categorizar":"")); }
-    catch(e){ toast("No se pudo guardar: "+(e.message||e),4000); }
+    if(!confirm("Se cargarán "+nf(r.ofertas)+" ofertas ("+nf(r.n)+" componentes) en la base compartida. Las que ya existan se reemplazan. ¿Continuar?")) return;
+    try{
+      toast("Guardando composición…",8000);
+      await DB.setMany("ofertas",Object.keys(r.of).map(function(k){ return {id:k,datos:{desc:r.of[k].desc,comps:r.of[k].comps}}; }));
+      await cargarBase();
+      var nv=await registrarOfertas(Object.keys(r.of).map(function(k){ return {ref:k,desc:r.of[k].desc}; }),"composición",coActual());
+      toast(nf(r.ofertas)+" composiciones guardadas"+(nv?" · "+nf(nv)+" ofertas nuevas por categorizar":""),4000);
+    } catch(e){ toast("No se pudo guardar: "+(e.message||e),4000); }
     render();
   });
 };
+/* Excel de zonas (Desglosar_Oferta SI/NO): fija la categoria general (virtual SI/NO) de las ofertas que aun no la tienen; no pisa las ya categorizadas */
 ACT.ofmarcas=function(){
   elegirExcel(async function(wb){
     var t=tablaDe(wb,["referencia"],"Zonas"); if(!t){ toast("No se encontró la columna Referencia"); return; }
     var p; try{ p=parseMatriz(t); }catch(e){ toast(e.message); return; }
-    var co=coActual(), fl=p.rows.filter(function(r){ return r.flag&&(/^OF/i.test(r.ref)||r.flag==="SI"); });
+    var fl=p.rows.filter(function(r){ var u=r.ref.toUpperCase(); return r.flag&&(r.flag==="SI"||esOferta(u,r.desc)||S.ofr[u]); });
     if(!fl.length){ toast("El archivo no trae la columna Desglosar_Oferta con SI/NO"); return; }
-    try{ await DB.setMany("ofertas_desglose",fl.map(function(r){ return {id:co+"-"+r.ref.toUpperCase(),datos:{co:co,oferta:r.ref.toUpperCase(),desglosar:r.flag==="SI",actualizadoEn:ahora()}}; })); await registrarOfertas(fl.map(function(r){ return {ref:r.ref,desc:r.desc||""}; }),"marcas",co); await cargarBase(); toast(fl.length+" marcas aplicadas a C.O. "+co); }
+    var nuevos=[], ya=0;
+    fl.forEach(function(r){ var u=r.ref.toUpperCase(), prev=S.cat[u]; if(prev&&prev.virtual!=null){ ya++; return; }
+      nuevos.push({id:u,datos:Object.assign({},prev||{},{codigo:u,desc:r.desc||(prev&&prev.desc)||(S.ofr[u]&&S.ofr[u].desc)||"",virtual:r.flag==="SI",origen:(prev&&prev.origen)||"marcas",actualizadoEn:ahora(),actualizadoPor:S.me.id})}); });
+    if(!nuevos.length){ toast("Las "+ya+" ofertas del archivo ya estaban categorizadas: no se cambió nada"); return; }
+    if(!confirm("Se categorizarán "+nuevos.length+" ofertas ("+nuevos.filter(function(n){ return n.datos.virtual; }).length+" virtuales y "+nuevos.filter(function(n){ return !n.datos.virtual; }).length+" no virtuales)."+(ya?" Otras "+ya+" ya tenían categoría y no se tocan.":"")+" ¿Continuar?")) return;
+    try{ await DB.setMany("ofertas_cat",nuevos); await cargarBase(); toast(nuevos.length+" ofertas categorizadas",4000); }
     catch(e){ toast("No se pudo guardar: "+(e.message||e),4000); }
     render();
   });
+};
+/* Excel de categorias: Referencia, Descripcion, Virtual (SI/NO) y, opcional, una columna por ciudad con la excepcion (SI/NO) */
+ACT.ofcat=function(){
+  elegirExcel(async function(wb){
+    var t=tablaDe(wb,["referencia"],"Categoria"); if(!t){ toast("No se encontró la columna Referencia"); return; }
+    var h=t.hdr.map(normH), ci=h.indexOf("referencia"), cd=Math.max(h.indexOf("descripcion"),h.indexOf("desc. item")), cv=-1;
+    ["virtual","desglosar","desglosar_oferta","desglosar oferta","es virtual"].forEach(function(k){ if(cv<0&&h.indexOf(k)>=0) cv=h.indexOf(k); });
+    if(cv<0){ toast("Falta la columna Virtual (SI/NO)"); return; }
+    var cc=CIUDADES.map(function(c){ return {co:c.co,i:h.indexOf(normH(c.nombre))}; }).filter(function(x){ return x.i>=0; });
+    var cats=[], exc=[], borr=[];
+    t.rows.forEach(function(r){
+      var u=normRef(r[ci]).toUpperCase(); if(!u) return; var v=normH(r[cv]), prev=S.cat[u]||{};
+      if(v==="si"||v==="no"||v==="") cats.push({id:u,datos:Object.assign({},prev,{codigo:u,desc:(cd>=0?String(r[cd]||"").trim():"")||prev.desc||(S.ofr[u]&&S.ofr[u].desc)||"",virtual:v===""?null:v==="si",origen:prev.origen||"archivo",actualizadoEn:ahora(),actualizadoPor:S.me.id})});
+      cc.forEach(function(x){ var e=normH(r[x.i]); if(e==="si"||e==="no") exc.push({id:x.co+"-"+u,datos:{co:x.co,oferta:u,desglosar:e==="si",actualizadoEn:ahora()}}); else if(e==="sin"||e==="-"||e==="según categoría"||e==="segun categoria"){ if((S.desg[x.co]||{})[u]!==undefined) borr.push(x.co+"-"+u); } });
+    });
+    if(!cats.length){ toast("No hay filas para cargar"); return; }
+    if(!confirm("Se actualizará la categoría de "+nf(cats.length)+" ofertas y "+exc.length+" excepciones por ciudad. ¿Continuar?")) return;
+    try{ toast("Guardando…",6000); await DB.setMany("ofertas_cat",cats); if(exc.length) await DB.setMany("ofertas_desglose",exc); for(var i=0;i<borr.length;i++) await DB.del("ofertas_desglose",borr[i]); await cargarBase(); toast("Categorías actualizadas",4000); }
+    catch(e){ toast("No se pudo guardar: "+(e.message||e),4000); }
+    render();
+  });
+};
+/* Plantillas de Excel descargables desde la propia app */
+var PLANTILLAS={
+  composicion:{n:"Plantilla_Composicion_Ofertas.xlsx",hoja:"Ofertas",f:[["Referencia","Desc. Item","Referencia comp.","Desc. item comp.","Cantidad Requerida"],["000372","OF. LIMP. DESINF. X500 3 UNS (EJEMPLO)","000335","LIMPIADOR LAVANDA X500 (EJEMPLO)",1],["000372","OF. LIMP. DESINF. X500 3 UNS (EJEMPLO)","000350","LIMPIADOR CANELA X500 (EJEMPLO)",1],["OF000001","OFERTA EJEMPLO PAGUE 6 LLEVE 7","000443","PRODUCTO EJEMPLO",7]]},
+  categorias:{n:"Plantilla_Categoria_Ofertas.xlsx",hoja:"Categoria",f:[["Referencia","Descripcion","Virtual","Pereira","Armenia","Manizales","Ibague","Neiva"],["000372","OF. LIMP. DESINF. X500 3 UNS (EJEMPLO)","SI","","","","",""],["000436","PAPEL ALUMINIO KILO (EJEMPLO, NO ES OFERTA)","NO","","","","",""],["OF000001","OFERTA EJEMPLO","SI","","NO","","",""]]},
+  zonas:{n:"Plantilla_Matriz_Zonas.xlsx",hoja:"Zonas",f:[["Referencia","Descripcion","Zona","Secuencia","Desglosar_Oferta","Ubicacion","Auxiliar"],["100001","PRODUCTO EJEMPLO A","GUANTE",1,"NO","",""],["100002","PRODUCTO EJEMPLO B","RUBEN",2,"NO","",""],["000372","OF. EJEMPLO","FUERA DEL SISTEMA",1,"SI","",""]]},
+  maestro:{n:"Plantilla_Maestro_Productos.xlsx",hoja:"MAESTRO",f:[["Referencia","Descripcion","Codigo de barras","Factor U.M.","GRUPO SHOPPER","LINEA PROVEEDOR","001-PESO INDIVIDUAL","001-ANCHO EMBALAJE","001-ALTO EMBALAJE","001-PROFUNDIDAD EMBALAJE","001-VOLUMEN INDIVIDUAL"],["100001","PRODUCTO EJEMPLO A","7700000000017",12,"GRUPO EJEMPLO","LINEA EJEMPLO",0.5,30,20,25,0.0004]]}
+};
+ACT.plantilla=function(el,d){
+  var p=PLANTILLAS[d("t")]; if(!p) return;
+  try{ var ws=XLSX.utils.aoa_to_sheet(p.f), wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,p.hoja); XLSX.writeFile(wb,p.n); toast("Plantilla descargada: "+p.n); }
+  catch(e){ toast("No se pudo generar la plantilla: "+(e.message||e)); }
 };
 
 /* ---------- maestro de productos ---------- */
@@ -1029,7 +1084,7 @@ VIEWS.maestro=function(){
   app('<h1>Maestro de productos</h1><p class="muted small">Grupo Shopper, línea de proveedor, empaque, código de barras, peso y dimensiones. Se usa para completar los listados y calcular el peso y volumen del despacho. Es compartido por todos.</p>'+
     '<div class="kpis"><div class="kpi"><b>'+nf(n)+'</b><span>Referencias</span></div></div>'+
     '<div class="card gold"><b>Cargar maestro (Excel)</b><p class="small muted">Columnas: Referencia, Descripción, Código de barras, Factor U.M., GRUPO SHOPPER, LINEA PROVEEDOR, 001-PESO INDIVIDUAL, 001-ANCHO/ALTO/PROFUNDIDAD EMBALAJE y 001-VOLUMEN INDIVIDUAL (la hoja MAESTRO de la macro).</p><button class="btn block" data-act="maecargar">Cargar maestro</button></div>'+
-    '<div class="sp"></div><button class="btn ghost block" data-act="maerefrescar">Actualizar desde la nube</button>');
+    '<div class="sp"></div><button class="btn ghost block" data-act="maerefrescar">Actualizar desde la nube</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="maestro">Descargar plantilla</button>');
 };
 ACT.maecargar=function(){
   elegirExcel(async function(wb){
