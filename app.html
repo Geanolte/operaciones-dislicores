@@ -185,7 +185,20 @@ function colMap(hdr,alias){
   Object.keys(alias).forEach(function(k){ m[k]=-1; for(var j=0;j<h.length;j++){ if(alias[k].indexOf(h[j])>=0){ m[k]=j; break; } } });
   return m;
 }
-var A_LIN={ref:["referencia"],desc:["desc. item","descripcion","descripcion item","desc item"],bar:["codigo barra principal","cod ean","codigo de barras"],ue:["factor u.m. emp.","factor u.m. empaque","u.e","unidad empaque"],cant:["cantidad","cant. comprom.","cant"],bod:["bodega"],grupo:["grupo shopper"],linea:["linea proveedor"],doc:["nro documento","numero factura","factura"]};
+var A_LIN={ref:["referencia"],desc:["desc. item","descripcion","descripcion item","desc item"],bar:["codigo barra principal","codigo barras principal","codigo de barras principal","cod ean","codigo de barras"],ue:["factor u.m. emp.","factor u.m. empaque","u.m. emp.","u.m. empaque","u.e","unidad empaque"],cant:["cantidad","cant. comprom.","cant. comprometida","salidas (inv.)","cant"],bod:["bodega"],grupo:["grupo shopper"],linea:["linea proveedor"],doc:["nro documento","documento","numero factura","factura"]};
+var NOMBRE_TIPO={FAC:"Facturas",PED:"Pedidos",REQ:"Requisiciones",REM:"Remisiones",DOC:"Otros"};
+/* Tipo de documento segun las columnas (y, si hace falta, el prefijo del numero):
+   REM = remision (TCA, TBV...: "Salidas (inv.)") · REQ = requisicion (RQT/RQV: "Cant. comprometida") · FAC = factura (FV...) · PED = pedido */
+function tipoDe(hdr,docs){
+  var h=hdr.map(normH); function tiene(x){ return h.indexOf(x)>=0; }
+  if(tiene("salidas (inv.)")) return "REM";
+  if(tiene("cant. comprometida")&&(tiene("bodega entrada")||tiene("bodega salida"))) return "REQ";
+  if(tiene("cliente resumen factura")||tiene("numero planilla de factura")) return "FAC";
+  if(tiene("cant. comprom.")) return "PED";
+  var p=String(docs[0]||"").toUpperCase();
+  if(/^FV/.test(p)) return "FAC"; if(/-RQ[TV]-|^RQ[TV]/.test(p)) return "REQ"; if(/^T(CA|BV)/.test(p)) return "REM";
+  return "DOC";
+}
 var A_MAE={ref:["referencia"],desc:["descripcion","desc. item"],bar:["codigo de barras","codigo barra principal"],ue:["factor u.m.","factor u.m. emp."],grupo:["grupo shopper"],linea:["linea proveedor"],peso:["001-peso individual"],vi:["001-volumen individual"],ae:["001-ancho embalaje"],he:["001-alto embalaje"],pe:["001-profundidad embalaje"]};
 var A_OF={of:["codigo ofera","codigo oferta","oferta"],comp:["codigo producto","componente"],desc:["descripcion producto","descripcion componente"],cant:["cantidad oferta","cant.","cant"]};
 var A_PLA={num:["numero"],fecha:["fecha"],fac:["numero factura"],veh:["vehiculo"],est:["estado"]};
@@ -194,14 +207,15 @@ var A_PLA={num:["numero"],fecha:["fecha"],fac:["numero factura"],veh:["vehiculo"
 function parseLineas(t){
   var m=colMap(t.hdr,A_LIN);
   if(m.ref<0||m.cant<0) throw new Error("El archivo debe traer las columnas Referencia y Cantidad.");
-  var out=[],docs={};
+  var out=[],docs={},primero="";
   t.rows.forEach(function(r){
     var ref=normRef(r[m.ref]); if(!ref) return;
     var c=parseDbl(r[m.cant]); if(!(c>0)) return;
-    var doc=m.doc>=0?String(r[m.doc]||"").trim():""; if(doc) docs[doc]=1;
+    var doc=m.doc>=0?String(r[m.doc]||"").trim():""; if(doc){ docs[doc]=1; if(!primero) primero=doc; }
     out.push({ref:ref,desc:m.desc>=0?String(r[m.desc]||"").trim():"",bar:m.bar>=0?normBar(r[m.bar]):"",ue:m.ue>=0?ueDe(r[m.ue]):0,cant:c,bod:m.bod>=0?String(r[m.bod]||"").trim():"",grupo:m.grupo>=0?String(r[m.grupo]||"").trim():"",linea:m.linea>=0?String(r[m.linea]||"").trim():"",doc:doc});
   });
-  return {lineas:out,docs:Object.keys(docs).length,cols:m};
+  var tipo=tipoDe(t.hdr,[primero]); out.forEach(function(l){ l.t=tipo; });
+  return {lineas:out,docs:Object.keys(docs).length,cols:m,tipo:tipo};
 }
 function cargarMaestro(t){
   var m=colMap(t.hdr,A_MAE); if(m.ref<0) throw new Error("El maestro debe traer la columna Referencia.");
@@ -225,20 +239,38 @@ function cargarOfertas(t){
 
 /* ---------- logica de negocio ---------- */
 /* Desglose de ofertas virtuales (OF): igual que la macro. Cantidad del componente = cantidad pedida x cantidad en la oferta. */
-function desglosar(lineas){
+function desglosar(lineas,noDes){   /* noDes: {REM:1,REQ:1} = tipos cuyas OF se dejan como producto armado */
   var ueArch={}; lineas.forEach(function(l){ if(!/^OF/i.test(l.ref)&&l.ue>0&&!ueArch[l.ref]) ueArch[l.ref]=l.ue; });
   var out=[],sin={},nOF=0,nComp=0;
   lineas.forEach(function(l){
-    var esOF=/^OF/i.test(l.ref), comp=esOF?S.ofertas[l.ref.toUpperCase()]:null;
+    var esOF=/^OF/i.test(l.ref), omitir=!!(noDes&&noDes[l.t]), comp=(esOF&&!omitir)?S.ofertas[l.ref.toUpperCase()]:null;
     if(comp){
       nOF++;
       comp.forEach(function(c){
         var m=S.maestro[c.r]||{};
-        out.push({ref:c.r,desc:c.d||m.d||"",bar:m.b||"",ue:ueArch[c.r]||m.u||1,cant:rb(l.cant*c.c),bod:l.bod,grupo:"",linea:"",doc:l.doc}); nComp++;
+        out.push({ref:c.r,desc:c.d||m.d||"",bar:m.b||"",ue:ueArch[c.r]||m.u||1,cant:rb(l.cant*c.c),bod:l.bod,grupo:"",linea:"",doc:l.doc,t:l.t}); nComp++;
       });
-    } else { if(esOF) sin[l.ref]=l.desc; out.push(l); }
+    } else { if(esOF&&!omitir) sin[l.ref]=l.desc; out.push(l); }
   });
   return {lineas:out,nOF:nOF,nComp:nComp,sin:sin};
+}
+/* ---- tipos de documento en una sesion nueva ---- */
+function resumenTipos(raw){ var o={}; raw.forEach(function(l){ var k=l.t||"DOC", x=o[k]=o[k]||{n:0,u:0,of:0}; x.n++; x.u+=l.cant; if(/^OF/i.test(l.ref)) x.of++; }); return o; }
+function totalesPorRef(raw,t){ var m={}; raw.forEach(function(l){ if(l.t===t) m[l.ref]=(m[l.ref]||0)+l.cant; }); return m; }
+/* Requisiciones y remisiones: la remision es el resultado de la requisicion. Si traen las mismas cantidades por referencia son lo mismo. */
+function mismosProductos(raw){
+  var a=totalesPorRef(raw,"REQ"), b=totalesPorRef(raw,"REM"), ka=Object.keys(a), kb=Object.keys(b); if(!ka.length||!kb.length) return false;
+  var ig=0; ka.forEach(function(k){ if(b[k]===a[k]) ig++; }); return ig/Math.max(ka.length,kb.length)>=0.9;
+}
+/* Recalcula lo que entra a la sesion segun los tipos incluidos y el modo de las ofertas (OF) */
+function armarNueva(){
+  var N=NUEVA, lineas=N.raw.filter(function(l){ return !N.excl[l.t||"DOC"]; }), noDes=N.dejarOF?{REM:1,REQ:1}:null;
+  var des=desglosar(lineas,noDes), bods=uniq(des.lineas.map(function(l){ return l.bod; }).filter(Boolean)).sort(), refs={},un=0,dd={};
+  des.lineas.forEach(function(l){ refs[l.ref]=1; un+=l.cant; });
+  lineas.forEach(function(l){ if(l.doc) dd[l.doc]=1; });
+  N.lineas=des.lineas; N.des=des; N.refs=Object.keys(refs).length; N.unid=un; N.docs=Object.keys(dd).length; N.bodegas=bods;
+  N.ofRem=lineas.filter(function(l){ return /^OF/i.test(l.ref)&&(l.t==="REM"||l.t==="REQ"); }).length;
+  N.selBod=(N.selBod||bods).filter(function(b){ return bods.indexOf(b)>=0; }); if(!N.selBod.length) N.selBod=bods.slice();
 }
 /* Consolida por referencia: suma cantidades; completa grupo/linea/empaque/barras desde el maestro */
 function consolidar(lineas,bodegas){
@@ -247,10 +279,10 @@ function consolidar(lineas,bodegas){
     if(bodegas&&bodegas.length&&l.bod&&bodegas.indexOf(l.bod)<0) return;
     var m=S.maestro[l.ref]||{}, k=l.ref, it=mp[k];
     if(!it){ it=mp[k]={ref:l.ref,desc:l.desc||m.d||"",bar:l.bar||m.b||"",ue:(l.ue>0?l.ue:(m.u||1)),total:0,grupo:l.grupo||m.g||"SIN GRUPO",linea:l.linea||m.l||"SIN LÍNEA"}; }
-    it.total+=l.cant;
+    it.total+=l.cant; it._t=it._t||{}; if(l.t) it._t[l.t]=1;
     if(!it.desc) it.desc=l.desc||m.d||""; if(!it.bar) it.bar=l.bar||m.b||"";
   });
-  return Object.keys(mp).sort(ordenRef).map(function(k){ return mp[k]; });
+  return Object.keys(mp).sort(ordenRef).map(function(k){ var it=mp[k]; it.tipos=Object.keys(it._t||{}).sort().join("/"); delete it._t; return it; });
 }
 /* Peso y volumen: cajas x volumen de embalaje + sueltas x volumen individual (misma logica de la macro) */
 function carga(items){
@@ -311,7 +343,7 @@ async function decodificar(code){
   return JSON.parse(new TextDecoder().decode(b));
 }
 function paqueteDe(t,sid,nom,titulo,items){
-  return {v:1,k:"lista",t:t,sid:sid,nom:nom,titulo:titulo,fecha:hoy(),items:items.map(function(i){ return [i.ref,i.desc,i.bar,i.ue,i.total,i.grupo,i.linea]; })};
+  return {v:1,k:"lista",t:t,sid:sid,nom:nom,titulo:titulo,fecha:hoy(),items:items.map(function(i){ return [i.ref,i.desc,i.bar,i.ue,i.total,i.grupo,i.linea,i.tipos||""]; })};
 }
 function compartirTexto(nombreArchivo,texto,titulo){
   try{
@@ -335,7 +367,7 @@ function importarLista(p,nube){
   if(!p||p.k!=="lista") throw new Error("Este código no es una lista de trabajo.");
   var id=p.sid+"|"+p.nom, ex=null;
   S.mis.forEach(function(m){ if(m.id===id) ex=m; });
-  var items=p.items.map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],total:a[4],grupo:a[5],linea:a[6],est:"",hecho:0,sc:0}; });
+  var items=p.items.map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],total:a[4],grupo:a[5],linea:a[6],tipos:a[7]||"",est:"",hecho:0,sc:0}; });
   if(ex){ var old={}; ex.items.forEach(function(i){ old[i.ref]=i; }); items.forEach(function(i){ if(old[i.ref]&&old[i.ref].total===i.total){ i.est=old[i.ref].est; i.hecho=old[i.ref].hecho; i.sc=old[i.ref].sc; } }); ex.items=items; ex.titulo=p.titulo; ex.fecha=p.fecha; if(nube) ex.nube=true; }
   else S.mis.unshift({id:id,t:p.t,sid:p.sid,nom:p.nom,titulo:p.titulo,fecha:p.fecha,items:items,rec:hoy(),nube:!!nube});
   save("mis"); return id;
@@ -536,9 +568,15 @@ var NUEVA={};
 VIEWS.nueva=function(){
   topbar("Nueva sesión","Cargar archivo",true);
   var h='<h1>Nueva sesión</h1>';
-  h+='<div class="card gold"><b>1. Archivo de facturas o pedidos</b><p class="small muted">Se usan solo las columnas de producto y cantidad (Referencia, Descripción, Código de barras, Factor U.M., Cantidad, Bodega y, si vienen, Grupo Shopper y Línea proveedor). Todo lo demás se descarta. Puede elegir <b>varios archivos a la vez</b>; si un documento viene repetido, se cuenta una sola vez.</p><button class="btn block" data-act="cargalin">Elegir Excel (uno o varios)</button>';
+  h+='<div class="card gold"><b>1. Archivos de facturas, pedidos, requisiciones o remisiones</b><p class="small muted">La app reconoce el tipo de cada archivo (factura, pedido, requisición RQT o remisión TCA). Se usan solo las columnas de producto y cantidad (Referencia, Descripción, Código de barras, empaque, Cantidad, Bodega y, si vienen, Grupo Shopper y Línea proveedor). Todo lo demás se descarta. Puede elegir <b>varios archivos a la vez</b>; si un documento viene repetido, se cuenta una sola vez.</p><button class="btn block" data-act="cargalin">Elegir Excel (uno o varios)</button>';
   if(NUEVA.ok){
-    if(NUEVA.archivos&&NUEVA.archivos.length>1) h+='<div class="hint" style="margin-top:10px"><b>'+NUEVA.archivos.length+' archivos cargados</b>'+NUEVA.archivos.map(function(a){ return '<br>• '+esc(a.n)+' — '+nf(a.l)+' líneas · '+nf(a.d)+' documentos'; }).join("")+(NUEVA.omitidos?'<br><b>'+NUEVA.omitidos+' documentos repetidos</b> entre archivos: se contaron una sola vez.':'')+'</div>';
+    if(NUEVA.archivos&&NUEVA.archivos.length>0) h+='<div class="hint" style="margin-top:10px"><b>'+NUEVA.archivos.length+(NUEVA.archivos.length>1?' archivos cargados':' archivo cargado')+'</b>'+NUEVA.archivos.map(function(a){ return '<br>• '+esc(a.n)+' — <b>'+(NOMBRE_TIPO[a.t]||a.t)+'</b> · '+nf(a.l)+' líneas · '+nf(a.d)+' documentos'; }).join("")+(NUEVA.omitidos?'<br><b>'+NUEVA.omitidos+' documentos repetidos</b> entre archivos: se contaron una sola vez.':'')+'</div>';
+    if(NUEVA.tipos){
+      var ks=Object.keys(NUEVA.tipos);
+      h+='<label class="lb">Tipos de documento (toque para incluir o excluir)</label><div class="row">'+ks.map(function(k){ var x=NUEVA.tipos[k], ex=NUEVA.excl[k]; return '<span class="chip btn2 '+(ex?'':'sel')+'" data-act="toggtipo" data-k="'+k+'">'+(NOMBRE_TIPO[k]||k)+' · '+nf(x.n)+' líneas · '+nf(x.u)+' u.'+(ex?' · excluido':'')+'</span>'; }).join("")+'</div>';
+      if(NUEVA.iguales) h+='<div class="hint warn" style="margin-top:8px">Las <b>requisiciones</b> y las <b>remisiones</b> traen las mismas cantidades por referencia: la remisión es el resultado de la requisición. Se dejó solo la <b>remisión</b> para no contar doble. Puede cambiarlo tocando los tipos de arriba.</div>';
+      if(NUEVA.ofRem) h+='<label class="lb">Ofertas (OF) en requisiciones y remisiones: '+NUEVA.ofRem+' líneas</label><div class="row"><span class="chip btn2 '+(NUEVA.dejarOF?'sel':'')+'" data-act="ofmodo" data-v="dejar">Dejar como producto armado</span><span class="chip btn2 '+(NUEVA.dejarOF?'':'sel')+'" data-act="ofmodo" data-v="desglosar">Desglosar en componentes</span></div><p class="small muted">Los packs de las remisiones (por ejemplo, los que salen de la bodega 06004) suelen ser kits ya armados que existen físicamente: déjelos como producto. Si el pack se arma al alistar, desglóselo.</p>';
+    }
     if(NUEVA.errores&&NUEVA.errores.length) h+='<div class="hint warn" style="margin-top:8px"><b>No se pudieron usar:</b><br>'+NUEVA.errores.map(function(e){ return '• '+esc(e); }).join("<br>")+'</div>';
     h+='<div class="hint" style="margin-top:10px"><b>'+esc(NUEVA.nombre)+'</b><br>Filas con producto: <b>'+nf(NUEVA.lineas.length)+'</b> · Documentos: <b>'+nf(NUEVA.docs)+'</b><br>Referencias distintas: <b>'+nf(NUEVA.refs)+'</b> · Unidades: <b>'+nf(NUEVA.unid)+'</b>'+
       (NUEVA.des&&NUEVA.des.nOF?'<br>Ofertas desglosadas: <b>'+NUEVA.des.nOF+'</b> → '+NUEVA.des.nComp+' líneas de componentes':'')+'</div>';
@@ -653,7 +691,7 @@ function listaHtml(m){
     if(q&&normH(it.ref+" "+it.desc).indexOf(q)<0) return;
     n++;
     var cls=it.est==="ok"?"ok":it.est==="parc"?"parc":it.est==="no"?"no":"";
-    h+='<div class="line '+cls+'" data-act="linea" data-i="'+i+'"><div style="min-width:0"><div class="r">'+esc(it.ref)+'</div><div class="d">'+esc(it.desc)+'</div><div class="row"><span class="chip info">'+esc(it.grupo)+'</span><span class="chip info">'+esc(it.linea)+'</span>'+(it.est==="parc"?'<span class="chip warn">hecho '+fmtQty(it.hecho,it.ue)+'</span>':'')+(it.est==="no"?'<span class="chip bad">sin stock</span>':'')+'</div></div><div class="q">'+esc(fmtQty(it.total,it.ue))+'</div></div>';
+    h+='<div class="line '+cls+'" data-act="linea" data-i="'+i+'"><div style="min-width:0"><div class="r">'+esc(it.ref)+'</div><div class="d">'+esc(it.desc)+'</div><div class="row"><span class="chip info">'+esc(it.grupo)+'</span><span class="chip info">'+esc(it.linea)+'</span>'+(it.tipos?'<span class="chip sel">'+esc(it.tipos)+'</span>':'')+(it.est==="parc"?'<span class="chip warn">hecho '+fmtQty(it.hecho,it.ue)+'</span>':'')+(it.est==="no"?'<span class="chip bad">sin stock</span>':'')+'</div></div><div class="q">'+esc(fmtQty(it.total,it.ue))+'</div></div>';
   });
   return h||'<p class="muted" style="text-align:center;padding:20px">No hay referencias en este filtro.</p>';
 }
@@ -793,13 +831,16 @@ document.addEventListener("click",function(e){
         var repetidos={},nRep=0; Object.keys(propios).forEach(function(dc){ if(vistos[dc]){ repetidos[dc]=1; nRep++; } });
         var aport=0; r.lineas.forEach(function(l){ if(l.doc&&repetidos[l.doc]) return; todas.push(l); aport++; });
         Object.keys(propios).forEach(function(dc){ vistos[dc]=1; });
-        omit+=nRep; detalle.push({n:it.f.name,l:aport,d:Object.keys(propios).length-nRep});
+        omit+=nRep; detalle.push({n:it.f.name,l:aport,d:Object.keys(propios).length-nRep,t:r.tipo});
       });
       if(!todas.length){ toast(err[0]||"No hay líneas para cargar"); return; }
-      var des=desglosar(todas), bods=uniq(des.lineas.map(function(l){ return l.bod; }).filter(Boolean)).sort(), refs={},un=0;
-      des.lineas.forEach(function(l){ refs[l.ref]=1; un+=l.cant; });
-      NUEVA={ok:true,nombre:lista.length>1?lista.length+" archivos":lista[0].f.name,lineas:des.lineas,des:des,docs:Object.keys(vistos).length,refs:Object.keys(refs).length,unid:un,bodegas:bods,selBod:bods.slice(),titulo:"Alistamiento "+hoy(),archivos:detalle,omitidos:omit,errores:err};
-      render(); }); break;
+      var iguales=mismosProductos(todas), excl={}; if(iguales) excl.REQ=true;   /* la remisión es el resultado de la requisición: se deja una sola */
+      NUEVA={ok:true,raw:todas,nombre:lista.length>1?lista.length+" archivos":lista[0].f.name,titulo:"Alistamiento "+hoy(),archivos:detalle,omitidos:omit,errores:err,tipos:resumenTipos(todas),excl:excl,iguales:iguales,dejarOF:true,selBod:null};
+      armarNueva(); render(); }); break;
+    case "toggtipo": var kt=d("k"); NUEVA.excl[kt]=!NUEVA.excl[kt];
+      if(Object.keys(NUEVA.tipos).every(function(x){ return NUEVA.excl[x]; })){ NUEVA.excl[kt]=false; toast("Debe quedar al menos un tipo de documento"); break; }
+      armarNueva(); render(); break;
+    case "ofmodo": NUEVA.dejarOF=(d("v")==="dejar"); armarNueva(); render(); break;
     case "togbod": var b=d("b"), ix=NUEVA.selBod.indexOf(b); if(ix>=0) NUEVA.selBod.splice(ix,1); else NUEVA.selBod.push(b); render(); break;
     case "crearses": var nom=($("#sn").value||"").trim()||NUEVA.titulo, its=consolidar(NUEVA.lineas,NUEVA.selBod);
       if(!its.length){ toast("No hay referencias para la sesión"); break; }
