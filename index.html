@@ -1139,11 +1139,21 @@ VIEWS.ses=function(){
   var sin=SESV.tareas.filter(function(t){ return !t.datos.asignadoId; })[0];
   if(sin){
     var ops=usuariosDe(s.co,"operario");
-    h+='<div class="card gold"><b>Sin asignar</b> · '+sin.datos.total+' referencias<p class="small muted">No están en la matriz de este C.O. o su auxiliar no está activo.</p><div class="row"><select id="sasel" class="grow"><option value="">— Elegir auxiliar —</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">'+esc(u.nombre)+'</option>'; }).join("")+'</select><button class="btn sm" data-act="asignarsin">Asignar todas</button></div></div>';
+    h+='<div class="card gold"><b>Sin asignar</b> · '+sin.datos.total+' referencias<p class="small muted">No están en la matriz de este C.O. o su auxiliar no está activo.</p><button class="btn ghost sm" data-act="versin">Ver las '+sin.datos.total+' referencias</button><div class="sp"></div><div class="row"><select id="sasel" class="grow"><option value="">— Elegir auxiliar —</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">'+esc(u.nombre)+'</option>'; }).join("")+'</select><button class="btn sm" data-act="asignarsin">Asignar todas</button></div></div>';
   }
   h+='<h2>Tareas</h2>'+SESV.tareas.filter(function(t){ return t.datos.asignadoId; }).sort(function(a,b){ return String(a.datos.asignadoNombre).localeCompare(String(b.datos.asignadoNombre)); }).map(function(t){ return tareaHtml(t,'data-act="vertarea" data-id="'+esc(t.id)+'"'); }).join("");
   h+='<div class="sp"></div><button class="btn red sm" data-act="eliminarses">Eliminar sesión</button>';
   app(h);
+};
+ACT.versin=async function(){
+  try{
+    var r=await DB.get("ops_tareas",SESV.id+"--SIN"); if(!r){ toast("Ya no hay referencias sin asignar"); cargarSes(); return; }
+    var its=r.datos.items||[];
+    abrirSheet('<h3>Sin asignar · '+its.length+' referencias</h3><p class="small muted">No están en la matriz de este C.O. Agrégalas en Matriz o asígnalas a un auxiliar.</p>'+
+      its.map(function(a){ return '<div class="card"><b>'+esc(a[0])+'</b> · <span class="mono">'+esc(nf(a[4]))+' und</span><div class="small muted">'+esc(a[1]||"")+'</div><div class="small muted">'+esc([a[5],a[6]].filter(Boolean).join(" · "))+(a[7]?' · '+esc(a[7]):'')+'</div></div>'; }).join("")+
+      '<div class="sp"></div><button class="btn ghost block" id="vsX">Cerrar</button>');
+    var b=$("#vsX"); if(b) b.onclick=cerrarSheet;
+  }catch(e){ toast("No se pudo cargar: "+(e.message||e)); }
 };
 ACT.asignarsin=async function(){
   var aux=$("#sasel").value, sid=SESV.id; if(!aux){ toast("Elija un auxiliar"); return; }
