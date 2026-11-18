@@ -109,6 +109,29 @@ select.compact{width:auto;padding:8px 10px}
 .sheet h3{margin:2px 0 6px}
 table.mini td,table.mini th{padding:6px 5px}
 
+/* ---- listado de separacion ---- */
+.lst-sheet{background:#fff;color:#111;border:1px solid #0002;border-radius:10px;padding:10px;margin-top:10px;overflow-x:auto}
+.lst-title{background:#282828;color:#fff;text-align:center;font-weight:700;font-size:16px;padding:8px;border-radius:6px}
+.lst-res{border-collapse:collapse;width:100%;margin:8px 0;font-size:13px}
+.lst-res th,.lst-res td{border:1px solid #888;padding:4px 8px;text-align:left}
+.lst-res th{background:#ddd;width:20%}
+table.lst{border-collapse:collapse;width:100%;font-size:12px}
+table.lst th{background:#505050;color:#fff;border:1px solid #444;padding:5px 6px;text-align:center}
+table.lst td{border:1px solid #999;padding:4px 6px;vertical-align:top}
+table.lst tbody tr:nth-child(even){background:#f0f0f0}
+table.lst .n{text-align:right;white-space:nowrap}
+table.lst .ck{text-align:center;width:28px}
+@media print{
+  @page{size:letter landscape;margin:8mm}
+  html,body{background:#fff!important}
+  #top,.noprint,.toast,nav{display:none!important}
+  .lst-sheet{border:0;padding:0;margin:0;overflow:visible}
+  table.lst{font-size:11px}
+  table.lst thead{display:table-header-group}
+  table.lst tr{page-break-inside:avoid}
+  .lst-title,table.lst th,.lst-res th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
 </style>
 </head>
 <body>
@@ -199,7 +222,8 @@ var S = {
   users:[], usersOk:false,    /* coleccion "usuarios" */
   mae:LS.get("ops_mae",{}),   /* maestro: ref -> {d,b,u,g,l,p,vi,ve} */
   ofr:LS.get("ops_ofr",{}),   /* ofertas: OF -> {desc,comps:[{ref,desc,cant}]} */
-  cat:{},                     /* categoria global de cada oferta: {OF:{virtual:true|false|null,...}} */
+  pobl:{},                    /* poblaciones -> ruta: {clave:{ciudad,ruta}} (compartido) */
+  cat:{},                  /* categoria global de cada oferta: {OF:{virtual:true|false|null,...}} */
   desg:{},                  /* marcas de desglose por C.O.: {co:{OF:true|false}} */
   matriz:{},                  /* por C.O.: {ref:{zona,ubicacion,secuencia,auxiliarId,descItem}} */
   coSel:LS.raw("ops_cosel")||"006",   /* C.O. de trabajo (el administrador puede cambiarlo) */
@@ -336,7 +360,7 @@ function colMap(hdr,alias){
   Object.keys(alias).forEach(function(k){ m[k]=-1; for(var j=0;j<h.length;j++){ if(alias[k].indexOf(h[j])>=0){ m[k]=j; break; } } });
   return m;
 }
-var A_LIN={ref:["referencia"],desc:["desc. item","descripcion","descripcion item","desc item"],bar:["codigo barra principal","codigo barras principal","codigo de barras principal","cod ean","codigo de barras"],ue:["factor u.m. emp.","factor u.m. empaque","u.m. emp.","u.m. empaque","u.e","unidad empaque"],cant:["cantidad","cant. comprom.","cant. comprometida","salidas (inv.)","cant"],bod:["bodega"],grupo:["grupo shopper"],linea:["linea proveedor"],doc:["nro documento","documento","numero factura","factura"]};
+var A_LIN={ref:["referencia"],desc:["desc. item","descripcion","descripcion item","desc item"],bar:["codigo barra principal","codigo barras principal","codigo de barras principal","cod ean","codigo de barras"],ue:["factor u.m. emp.","factor u.m. empaque","u.m. emp.","u.m. empaque","u.e","unidad empaque"],cant:["cantidad","cant. comprom.","cant. comprometida","salidas (inv.)","cant"],bod:["bodega"],ciu:["desc. ciudad","ciudad"],grupo:["grupo shopper"],linea:["linea proveedor"],doc:["nro documento","documento","numero factura","factura"]};
 var A_MAE={ref:["referencia"],desc:["descripcion","desc. item"],bar:["codigo de barras","codigo barra principal"],ue:["factor u.m.","factor u.m. emp."],grupo:["grupo shopper"],linea:["linea proveedor"],peso:["001-peso individual"],vi:["001-volumen individual"],ae:["001-ancho embalaje"],he:["001-alto embalaje"],pe:["001-profundidad embalaje"]};
 /* Composicion: acepta el formato de la app de picking / ERP (Referencia, Desc. Item, Referencia comp., Desc. item comp., Cantidad Requerida) y el formato de la macro */
 var A_OF={of:["codigo ofera","codigo oferta","oferta","referencia"],odesc:["descripcion oferta","descripcion de la oferta","desc. item","desc item"],comp:["codigo producto","componente","referencia comp.","referencia comp","referencia componente"],cdesc:["descripcion producto","descripcion componente","desc. item comp.","desc. item comp","desc item comp","descripcion item comp"],cant:["cantidad oferta","cant.","cant","cantidad","cantidad requerida"]};
@@ -372,7 +396,7 @@ function parseLineas(t){
     var ref=normRef(r[m.ref]); if(!ref) return;
     var c=parseDbl(r[m.cant]); if(!(c>0)) return;
     var doc=m.doc>=0?String(r[m.doc]||"").trim():""; if(doc){ docs[doc]=1; if(!primero) primero=doc; }
-    out.push({ref:ref,desc:m.desc>=0?String(r[m.desc]||"").trim():"",bar:m.bar>=0?normBar(r[m.bar]):"",ue:m.ue>=0?ueDe(r[m.ue]):0,cant:c,bod:m.bod>=0?String(r[m.bod]||"").trim():"",grupo:m.grupo>=0?String(r[m.grupo]||"").trim():"",linea:m.linea>=0?String(r[m.linea]||"").trim():"",doc:doc});
+    out.push({ref:ref,desc:m.desc>=0?String(r[m.desc]||"").trim():"",bar:m.bar>=0?normBar(r[m.bar]):"",ue:m.ue>=0?ueDe(r[m.ue]):0,cant:c,bod:m.bod>=0?String(r[m.bod]||"").trim():"",ciu:m.ciu>=0?String(r[m.ciu]||"").trim():"",grupo:m.grupo>=0?String(r[m.grupo]||"").trim():"",linea:m.linea>=0?String(r[m.linea]||"").trim():"",doc:doc});
   });
   var tipo=tipoDe(t.hdr,[primero]); out.forEach(function(l){ l.t=tipo; });
   return {lineas:out,docs:Object.keys(docs).length,cols:m,tipo:tipo};
@@ -380,10 +404,15 @@ function parseLineas(t){
 function parseMaestro(t){
   var m=colMap(t.hdr,A_MAE); if(m.ref<0) throw new Error("El maestro debe traer la columna Referencia.");
   var mae={},n=0;
+  /* Formato por unidad de medida (una fila por presentacion: C12 CAJA(12), UND UNIDAD): el factor de empaque es el de la caja */
+  var hh=t.hdr.map(normH), iUM=hh.indexOf("u.m."), iDU=hh.indexOf("desc. u.m."), fum={};
+  if(m.ue<0&&(iUM>=0||iDU>=0)){
+    t.rows.forEach(function(r){ var ref=normRef(r[m.ref]); if(!ref) return; var txt=String((iDU>=0?r[iDU]:"")||"")+" "+String((iUM>=0?r[iUM]:"")||""), g=/\((\d+)\)/.exec(txt)||/\bC[J]?(\d+)\b/i.exec(txt), f=g?parseInt(g[1],10):1; if(!(f>0)) f=1; fum[ref]=Math.max(fum[ref]||1,f); });
+  }
   t.rows.forEach(function(r){
     var ref=normRef(r[m.ref]); if(!ref||mae[ref]) return;
     var ve=(m.ae>=0&&m.he>=0&&m.pe>=0)?parseDbl(r[m.ae])*parseDbl(r[m.he])*parseDbl(r[m.pe]):0;
-    mae[ref]={d:m.desc>=0?String(r[m.desc]||"").trim():"",b:m.bar>=0?normBar(r[m.bar]):"",u:m.ue>=0?ueDe(r[m.ue]):1,g:m.grupo>=0?String(r[m.grupo]||"").trim():"",l:m.linea>=0?String(r[m.linea]||"").trim():"",p:m.peso>=0?parseDbl(r[m.peso]):0,vi:m.vi>=0?parseDbl(r[m.vi]):0,ve:ve}; n++;
+    mae[ref]={d:m.desc>=0?String(r[m.desc]||"").trim():"",b:m.bar>=0?normBar(r[m.bar]):"",u:m.ue>=0?ueDe(r[m.ue]):(fum[ref]||1),g:m.grupo>=0?String(r[m.grupo]||"").trim():"",l:m.linea>=0?String(r[m.linea]||"").trim():"",p:m.peso>=0?parseDbl(r[m.peso]):0,vi:m.vi>=0?parseDbl(r[m.vi]):0,ve:ve}; n++;
   });
   return {mae:mae,n:n};
 }
@@ -453,7 +482,7 @@ function consolidar(lineas){
   var mp={};
   lineas.forEach(function(l){
     var m=S.mae[l.ref]||{}, k=l.ref, it=mp[k];
-    if(!it){ it=mp[k]={ref:l.ref,desc:l.desc||m.d||"",bar:l.bar||m.b||"",ue:(l.ue>0?l.ue:(m.u||1)),total:0,grupo:l.grupo||m.g||"SIN GRUPO",linea:l.linea||m.l||"SIN LÍNEA"}; }
+    if(!it){ it=mp[k]={bod:l.bod||"",ref:l.ref,desc:l.desc||m.d||"",bar:l.bar||m.b||"",ue:(l.ue>0?l.ue:(m.u||1)),total:0,grupo:l.grupo||m.g||"SIN GRUPO",linea:l.linea||m.l||"SIN LÍNEA"}; }
     it.total+=l.cant; it._t=it._t||{}; if(l.t) it._t[l.t]=1;
     if(!it.desc) it.desc=l.desc||m.d||""; if(!it.bar) it.bar=l.bar||m.b||"";
   });
@@ -529,6 +558,7 @@ async function cargarBase(force,coPedido){
   p.push(DB.list("ofertas",{all:true}).then(function(rows){ var o={}; rows.forEach(function(r){ if(r.datos&&r.datos.comps) o[r.id]={desc:r.datos.desc||"",comps:r.datos.comps}; }); S.ofr=o; LS.set("ops_ofr",o); }));
   /* marcas por ciudad (solo excepciones) y categoria global de cada oferta: de las 5 ciudades */
   p.push(DB.list("ofertas_desglose",{all:true}).then(function(rows){ var f={}; rows.forEach(function(r){ var d=r.datos; if(d&&d.oferta&&d.co){ (f[d.co]=f[d.co]||{})[d.oferta]=!!d.desglosar; } }); S.desg=f; }));
+  p.push(DB.list("poblaciones",{all:true}).then(function(rows){ var c={}; rows.forEach(function(r){ c[r.id]=r.datos||{}; }); S.pobl=c; }));
   p.push(DB.list("ofertas_cat",{all:true}).then(function(rows){ var c={}; rows.forEach(function(r){ c[r.id]=r.datos||{}; }); S.cat=c; }));
   await Promise.all(p);
 }
@@ -548,7 +578,7 @@ function loginComo(u){
 }
 async function iniciarSesion(){
   limpiarVistas(); reset("cargando");
-  try{ if(esCoord()) await cargarBase(); }catch(e){ toast("No se pudieron cargar los datos base: "+(e.message||e)); }
+  try{ if(esCoord()){ await cargarBase(); await cargarMatriz(coActual()).catch(function(){}); } }catch(e){ toast("No se pudieron cargar los datos base: "+(e.message||e)); }
   reset("home"); cargarHome();
 }
 function salir(){ borrarIdentidad(); S.me=null; S.matriz={}; LG.co=null; limpiarVistas(); reset("login"); }
@@ -720,7 +750,9 @@ VIEWS.home=function(){
     '<button class="tile" data-act="ir" data-v="ali"><div class="ic">▦</div><div><b>Alistamiento</b><span>Cargar facturas, pedidos, requisiciones o remisiones y asignar</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="desp"><div class="ic">⛟</div><div><b>Despacho</b><span>Planilla por vehículo, segundo alistamiento y uso de capacidad</span></div></button>'+
     '<button class="tile" data-act="irsem"><div class="ic">◐</div><div><b>Semáforos de vencimiento</b><span>Se abre con tu mismo usuario, sin volver a ingresar</span></div></button>'+
+    pendientesHtml()+
     '<h2>Administración</h2>'+
+    '<button class="tile" data-act="ir" data-v="rutas"><div class="ic">⌖</div><div><b>Rutas por población</b><span>Qué ruta atiende cada población, para el listado de separación</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="matriz"><div class="ic">▤</div><div><b>Matriz de asignación</b><span>Qué referencias le corresponden a cada auxiliar (y, a futuro, su ubicación)</span></div></button>';
   if(esAdmin()) h2+='<button class="tile" data-act="ir" data-v="ofertas"><div class="ic">✦</div><div><b>Ofertas</b><span>Cuáles son virtuales y se desglosan</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="maestro"><div class="ic">⚙</div><div><b>Maestro de productos</b><span>Grupo, línea, empaque, peso y dimensiones</span></div></button>'+
@@ -894,9 +926,10 @@ VIEWS.matriz=function(){
     h+='<div class="card gold"><div class="who"><div class="avatar">'+esc(iniciales(nombreDe(a)))+'</div><div class="grow"><b>'+esc(nombreDe(a))+'</b><div class="small muted">'+Object.keys(por[a].z).map(function(z){ return esc(z)+' · '+por[a].z[z]; }).join(' · ')+'</div></div><b class="mono">'+nf(por[a].n)+'</b></div></div>';
   });
   if(sin) h+='<div class="card"><b>Sin auxiliar asignado</b>: '+nf(sin)+' referencias'+(fuera?' (de ellas '+nf(fuera)+' "fuera del sistema")':'')+'<div class="sp"></div><button class="btn ghost sm" data-act="mzsin">Ver y asignar las '+nf(sin)+'</button></div>';
-  h+='<div class="sp"></div><button class="btn gold block" data-act="mzcargar">Cargar matriz (Excel de zonas)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="zonas">Descargar plantilla</button>';
+  h+=matrizListaHtml(co);
+  h+='<div class="sp"></div><div class="card gold"><b>Cargar matriz (opcional)</b><p class="small muted">Solo si la ciudad ya tiene una matriz en Excel (Pereira). Las demás pueden ir asignando referencia por referencia en la lista de arriba.</p><button class="btn block" data-act="mzcargar">Cargar matriz (Excel de zonas)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="zonas">Descargar plantilla</button></div>';
   if(MZ.plan) h+=planMatrizHtml(co);
-  app(h);
+  app(h); enlazarMatriz();
 };
 ACT.mzco=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); abrirMatriz(); render(); };
 ACT.mzsin=function(){
@@ -929,7 +962,7 @@ function planMatrizHtml(co){
     Object.keys(P.p.zonas).sort(function(a,b){ return P.p.zonas[b]-P.p.zonas[a]; }).map(function(z){
       return '<tr><td><b>'+esc(z||"(vacía)")+'</b></td><td class="mono">'+nf(P.p.zonas[z])+'</td><td><select data-zmap="'+esc(z)+'" class="compact"><option value="">— Sin asignar —</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'"'+(MZ.map[z]===u.id?' selected':'')+'>'+esc(u.nombre)+'</option>'; }).join("")+'</select></td></tr>';
     }).join("")+'</table>';
-  if(P.flagSI+P.flagNO) h+='<label class="row" style="margin-top:10px;gap:8px"><input type="checkbox" id="mzflags" '+(P.aplicarFlags?'checked':'')+' style="width:auto"> <span class="small">Aplicar también las <b>marcas de desglose de ofertas</b> del archivo ('+P.flagSI+' en SÍ, '+P.flagNO+' en NO)</span></label>';
+  if(P.flagSI+P.flagNO) h+='<label class="row" style="margin-top:10px;gap:8px"><input type="checkbox" id="mzflags" '+(P.aplicarFlags?'checked':'')+' style="width:auto"> <span class="small">Categorizar también las <b>ofertas</b> según la marca de desglose del archivo (SÍ = virtual; no cambia las ya categorizadas) ('+P.flagSI+' en SÍ, '+P.flagNO+' en NO)</span></label>';
   h+='<div class="sp"></div><div class="row"><button class="btn gold grow" data-act="mzaplicar">Aplicar a la matriz de este C.O.</button><button class="btn ghost" data-act="mzcancelar">Cancelar</button></div></div>';
   return h;
 }
@@ -941,12 +974,14 @@ ACT.mzaplicar=async function(){
   try{
     var docs=P.p.rows.map(function(r){
       var prev=M[r.ref]||{}, aux=(r.aux?(usuariosDe(co).filter(function(u){ return normH(u.nombre)===normH(r.aux)||normH(primerNombre(u.nombre))===normH(r.aux); })[0]||{}).id:"")||MZ.map[r.zona]||"";
-      return {id:r.ref,datos:{referencia:r.ref,descItem:r.desc||prev.descItem||"",zona:r.zona,ubicacion:r.ubic||prev.ubicacion||(r.seq?String(r.seq):""),secuencia:r.seq||prev.secuencia||0,auxiliarId:aux,actualizadoEn:ahora(),actualizadoPor:S.me.id}};
+      return {id:r.ref,datos:{referencia:r.ref,descItem:r.desc||prev.descItem||"",zona:r.zona,ubicacion:r.ubic||prev.ubicacion||"",secuencia:r.seq||prev.secuencia||0,auxiliarId:aux,actualizadoEn:ahora(),actualizadoPor:S.me.id}};
     });
     await DB.setMany("matrices/"+co+"/lineas",docs,function(a,b){ });
     if(P.aplicarFlags){
-      var fl=P.p.rows.filter(function(r){ return r.flag&&(/^OF/i.test(r.ref)||r.flag==="SI"); }).map(function(r){ return {id:co+"-"+r.ref.toUpperCase(),datos:{co:co,oferta:r.ref.toUpperCase(),desglosar:r.flag==="SI",actualizadoEn:ahora()}}; });
-      if(fl.length) await DB.setMany("ofertas_desglose",fl);
+      /* las marcas SI/NO categorizan la oferta para todas las ciudades (sin pisar las ya categorizadas) */
+      var cats=[]; P.p.rows.forEach(function(r){ var u=r.ref.toUpperCase(), prev=S.cat[u]; if(!r.flag||(prev&&prev.virtual!=null)) return; if(!(r.flag==="SI"||esOferta(u,r.desc)||S.ofr[u])) return;
+        cats.push({id:u,datos:Object.assign({},prev||{},{codigo:u,desc:r.desc||(prev&&prev.desc)||"",virtual:r.flag==="SI",origen:(prev&&prev.origen)||"matriz",actualizadoEn:ahora(),actualizadoPor:S.me.id})}); });
+      if(cats.length) await DB.setMany("ofertas_cat",cats);
       await cargarBase();
     }
     toast("Matriz aplicada: "+nf(docs.length)+" referencias"); MZ.plan=null;
@@ -985,7 +1020,7 @@ VIEWS.ofertas=function(){
     var ciu=CIUDADES.map(function(ci){ var d=desgloseDe(k,ci.co); return ci.nombre.slice(0,3).toUpperCase()+' '+(d.v===true?'✔':d.v===false?'✖':'·'); }).join(' · ');
     return '<button class="task" data-act="ofabrir" data-k="'+esc(k)+'"><div class="tt"><b class="mono">'+esc(k)+'</b><span class="chip '+(t==="virtual"?"st-ok":t==="no"?"":"st-nov")+'">'+(t==="virtual"?"Virtual":t==="no"?"No virtual":"Sin categorizar")+'</span></div><div class="sub">'+esc(ofDesc(k))+'</div><div class="mini"><span class="chip">'+(c?'✔ '+c.comps.length+' componentes':'✖ sin composición')+'</span></div><div class="small muted" style="margin-top:4px">Desglosa: '+ciu+'</div></button>';
   }).join("");
-  h+='<div class="sp"></div><div class="card gold"><b>Composición de ofertas</b><p class="small muted">Excel con OFERTA (o CODIGO OFERA), COMPONENTE (o CODIGO PRODUCTO) y CANT. Puede ser la exportación de "Composición de ofertas" de la app de picking. Reemplaza la composición de las ofertas que vengan en el archivo y registra las nuevas. Acepta el mismo formato de la pantalla "Composición de ofertas" de la app de picking (Referencia, Desc. Item, Referencia comp., Desc. item comp., Cantidad Requerida).</p><button class="btn block" data-act="ofcomp">Cargar composición (Excel)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="composicion">Descargar plantilla</button></div>';
+  h+='<div class="sp"></div><button class="btn gold block" data-act="ofnueva">+ Agregar oferta</button><div class="sp"></div><div class="card gold"><b>Composición de ofertas</b><p class="small muted">Excel con OFERTA (o CODIGO OFERA), COMPONENTE (o CODIGO PRODUCTO) y CANT. Puede ser la exportación de "Composición de ofertas" de la app de picking. Reemplaza la composición de las ofertas que vengan en el archivo y registra las nuevas. Acepta el mismo formato de la pantalla "Composición de ofertas" de la app de picking (Referencia, Desc. Item, Referencia comp., Desc. item comp., Cantidad Requerida).</p><button class="btn block" data-act="ofcomp">Cargar composición (Excel)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="composicion">Descargar plantilla</button></div>';
   h+='<div class="card gold"><b>Categorías de ofertas</b><p class="small muted">Excel con Referencia, Descripcion y Virtual (SI/NO); opcionalmente una columna por ciudad (Pereira, Armenia…) con la excepción SI/NO. Reemplaza la categoría de lo que venga en el archivo.</p><button class="btn block" data-act="ofcat">Cargar categorías (Excel)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="categorias">Descargar plantilla</button></div>';
   h+='<div class="card gold"><b>Categorizar desde el Excel de zonas</b><p class="small muted">Usa la columna Desglosar_Oferta (SI/NO) del Excel de zonas para categorizar las ofertas que aún no tienen categoría (SI = virtual). No cambia las que ya están categorizadas.</p><button class="btn block" data-act="ofmarcas">Cargar desde Excel de zonas</button></div>';
   app(h);
@@ -1046,10 +1081,12 @@ ACT.ofmarcas=function(){
 /* Excel de categorias: Referencia, Descripcion, Virtual (SI/NO) y, opcional, una columna por ciudad con la excepcion (SI/NO) */
 ACT.ofcat=function(){
   elegirExcel(async function(wb){
-    var t=tablaDe(wb,["referencia"],"Categoria"); if(!t){ toast("No se encontró la columna Referencia"); return; }
-    var h=t.hdr.map(normH), ci=h.indexOf("referencia"), cd=Math.max(h.indexOf("descripcion"),h.indexOf("desc. item")), cv=-1;
+    var t=tablaDe(wb,["referencia","codigo ofera","codigo oferta"],"Ofertas virtuales"); if(!t){ toast("No se encontró la columna Referencia (o CODIGO OFERA)"); return; }
+    var h=t.hdr.map(normH), ci=Math.max(h.indexOf("referencia"),h.indexOf("codigo ofera"),h.indexOf("codigo oferta")), cd=Math.max(h.indexOf("descripcion"),h.indexOf("desc. item"),h.indexOf("descripcion oferta")), cv=-1;
     ["virtual","desglosar","desglosar_oferta","desglosar oferta","es virtual"].forEach(function(k){ if(cv<0&&h.indexOf(k)>=0) cv=h.indexOf(k); });
-    if(cv<0){ toast("Falta la columna Virtual (SI/NO)"); return; }
+    /* Lista de ofertas virtuales sin columna Virtual (p. ej. CODIGO OFERA + componentes): todo lo que aparezca es virtual */
+    var lista=false; if(cv<0){ if(h.indexOf("codigo ofera")>=0||h.indexOf("codigo oferta")>=0) lista=true; else { toast("Falta la columna Virtual (SI/NO)"); return; } }
+    if(lista){ cv=h.length; var vistos={}; t.rows=t.rows.filter(function(r){ var u=normRef(r[ci]).toUpperCase(); if(!u||vistos[u]) return false; vistos[u]=1; r[cv]="SI"; return true; }); }
     var cc=CIUDADES.map(function(c){ return {co:c.co,i:h.indexOf(normH(c.nombre))}; }).filter(function(x){ return x.i>=0; });
     var cats=[], exc=[], borr=[];
     t.rows.forEach(function(r){
@@ -1069,6 +1106,7 @@ var PLANTILLAS={
   composicion:{n:"Plantilla_Composicion_Ofertas.xlsx",hoja:"Ofertas",f:[["Referencia","Desc. Item","Referencia comp.","Desc. item comp.","Cantidad Requerida"],["000372","OF. LIMP. DESINF. X500 3 UNS (EJEMPLO)","000335","LIMPIADOR LAVANDA X500 (EJEMPLO)",1],["000372","OF. LIMP. DESINF. X500 3 UNS (EJEMPLO)","000350","LIMPIADOR CANELA X500 (EJEMPLO)",1],["OF000001","OFERTA EJEMPLO PAGUE 6 LLEVE 7","000443","PRODUCTO EJEMPLO",7]]},
   categorias:{n:"Plantilla_Categoria_Ofertas.xlsx",hoja:"Categoria",f:[["Referencia","Descripcion","Virtual","Pereira","Armenia","Manizales","Ibague","Neiva"],["000372","OF. LIMP. DESINF. X500 3 UNS (EJEMPLO)","SI","","","","",""],["000436","PAPEL ALUMINIO KILO (EJEMPLO, NO ES OFERTA)","NO","","","","",""],["OF000001","OFERTA EJEMPLO","SI","","NO","","",""]]},
   zonas:{n:"Plantilla_Matriz_Zonas.xlsx",hoja:"Zonas",f:[["Referencia","Descripcion","Zona","Secuencia","Desglosar_Oferta","Ubicacion","Auxiliar"],["100001","PRODUCTO EJEMPLO A","GUANTE",1,"NO","",""],["100002","PRODUCTO EJEMPLO B","RUBEN",2,"NO","",""],["000372","OF. EJEMPLO","FUERA DEL SISTEMA",1,"SI","",""]]},
+  poblaciones:{n:"Plantilla_Poblaciones_Rutas.xlsx",hoja:"POBLACIONES",f:[["Ciudad","Ruta"],["POBLACION EJEMPLO","RUTA 1"],["OTRA POBLACION","RUTA 1"]]},
   maestro:{n:"Plantilla_Maestro_Productos.xlsx",hoja:"MAESTRO",f:[["Referencia","Descripcion","Codigo de barras","Factor U.M.","GRUPO SHOPPER","LINEA PROVEEDOR","001-PESO INDIVIDUAL","001-ANCHO EMBALAJE","001-ALTO EMBALAJE","001-PROFUNDIDAD EMBALAJE","001-VOLUMEN INDIVIDUAL"],["100001","PRODUCTO EJEMPLO A","7700000000017",12,"GRUPO EJEMPLO","LINEA EJEMPLO",0.5,30,20,25,0.0004]]}
 };
 ACT.plantilla=function(el,d){
@@ -1078,20 +1116,14 @@ ACT.plantilla=function(el,d){
 };
 
 /* ---------- maestro de productos ---------- */
-VIEWS.maestro=function(){
-  topbar("Maestro de productos",subtituloUsuario(),true);
-  var n=Object.keys(S.mae).length;
-  app('<h1>Maestro de productos</h1><p class="muted small">Grupo Shopper, línea de proveedor, empaque, código de barras, peso y dimensiones. Se usa para completar los listados y calcular el peso y volumen del despacho. Es compartido por todos.</p>'+
-    '<div class="kpis"><div class="kpi"><b>'+nf(n)+'</b><span>Referencias</span></div></div>'+
-    '<div class="card gold"><b>Cargar maestro (Excel)</b><p class="small muted">Columnas: Referencia, Descripción, Código de barras, Factor U.M., GRUPO SHOPPER, LINEA PROVEEDOR, 001-PESO INDIVIDUAL, 001-ANCHO/ALTO/PROFUNDIDAD EMBALAJE y 001-VOLUMEN INDIVIDUAL (la hoja MAESTRO de la macro).</p><button class="btn block" data-act="maecargar">Cargar maestro</button></div>'+
-    '<div class="sp"></div><button class="btn ghost block" data-act="maerefrescar">Actualizar desde la nube</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="maestro">Descargar plantilla</button>');
-};
 ACT.maecargar=function(){
   elegirExcel(async function(wb){
     var t=tablaDe(wb,["referencia"],"MAESTRO"); if(!t){ toast("No se encontró la columna Referencia"); return; }
     var r; try{ r=parseMaestro(t); }catch(e){ toast(e.message); return; }
-    if(!confirm("Se cargarán "+nf(r.n)+" referencias en la base compartida. ¿Continuar?")) return;
-    try{ toast("Guardando maestro…",8000); await DB.setMany("maestro",Object.keys(r.mae).map(function(k){ return {id:k,datos:r.mae[k]}; })); await cargarBase(true); toast("Maestro: "+nf(r.n)+" referencias"); }
+    var nuevas=Object.keys(r.mae).filter(function(k){ return !S.mae[k]; }).length;
+    if(!confirm("Se cargarán "+nf(r.n)+" referencias para todas las ciudades ("+nf(nuevas)+" nuevas, "+nf(r.n-nuevas)+" ya existentes). De las existentes solo se completan los datos que el archivo traiga; no se borra nada. ¿Continuar?")) return;
+    try{ toast("Guardando maestro…",8000);
+      await DB.setMany("maestro",Object.keys(r.mae).map(function(k){ var n=r.mae[k], o=Object.assign({},S.mae[k]||{}); Object.keys(n).forEach(function(c){ if(n[c]!==""&&n[c]!==0&&n[c]!=null&&!(c==="u"&&n[c]===1&&o.u>1)) o[c]=n[c]; }); return {id:k,datos:o}; })); await cargarBase(true); toast("Maestro: "+nf(r.n)+" referencias"); }
     catch(e){ toast("No se pudo guardar: "+(e.message||e),4000); }
     render();
   });
@@ -1130,6 +1162,175 @@ ACT.usnuevo=function(){
     if(S.users.some(function(u){ return u.id===id; })){ toast("Ya existe un usuario con ese nombre en esa ciudad"); return; }
     try{ await DB.set("usuarios",id,{nombre:nom,cargo:($("#unCar",bg).value||"").trim(),co:co,ciudad:c?c.nombre:REGIONAL.nombre,rol:rol,activo:true,actualizadoEn:ahora()}); await cargarUsuarios(); cerrarSheet(); toast("Usuario agregado"); render(); }
     catch(e){ toast(e.message||"No se pudo guardar"); }
+  };
+};
+
+/* ===== 55_catalogo.js ===== */
+/* ---------- catalogo vivo: maestro y matriz en lista editable, pendientes automaticos y autoalimentacion ---------- */
+function enlazarBuscador(id,set){
+  var q=$("#"+id); if(!q) return;
+  q.oninput=function(){ set(q.value); var pos=q.selectionStart; render(); var q2=$("#"+id); if(q2){ q2.focus(); try{ q2.setSelectionRange(pos,pos); }catch(e){} } };
+}
+function selAux(co,sel){
+  var ops=usuariosDe(co,"operario").concat(usuariosDe(co,"coordinador"));
+  return '<option value="">— Sin asignar —</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'"'+(sel===u.id?" selected":"")+'>'+esc(u.nombre)+'</option>'; }).join("");
+}
+
+/* ===== Pendientes (se calculan solos con lo que hay cargado) ===== */
+function faltasMae(d){
+  var f=[]; d=d||{};
+  if(!d.d) f.push("descripción"); if(!d.b) f.push("barras"); if(!d.g||/^SIN /i.test(d.g)) f.push("grupo"); if(!d.l||/^SIN /i.test(d.l)) f.push("línea");
+  if(!(d.p>0)) f.push("peso"); if(!(d.vi>0||d.ve>0)) f.push("volumen"); return f;
+}
+function resumenPendientes(co){
+  var r={ofSin:0,ofSinComp:0,maeInc:0,mtzSin:null};
+  try{ ofertasLista().forEach(function(k){ var c=S.cat[k]; if(!c||c.virtual==null) r.ofSin++; if(c&&c.virtual===true&&!S.ofr[k]) r.ofSinComp++; }); }catch(e){}
+  Object.keys(S.mae).forEach(function(k){ if(faltasMae(S.mae[k]).length) r.maeInc++; });
+  var M=S.matriz[co]; if(M){ r.mtzSin=0; Object.keys(M).forEach(function(k){ if(!M[k].auxiliarId) r.mtzSin++; }); }
+  return r;
+}
+function pendientesHtml(){
+  var co=coActual(), r=resumenPendientes(co), it=[];
+  if(esAdmin()){
+    if(r.ofSin) it.push(['ofertas','sin',r.ofSin+' ofertas sin categorizar']);
+    if(r.ofSinComp) it.push(['ofertas','sincomp',r.ofSinComp+' ofertas virtuales sin composición']);
+    if(r.maeInc) it.push(['maestro','inc',nf(r.maeInc)+' productos con datos incompletos']);
+  }
+  var cs=Object.keys(S.pobl).filter(function(k){ return !S.pobl[k].ruta; }).length; if(cs) it.push(['rutas','sin',cs+' poblaciones sin ruta']);
+  if(r.mtzSin) it.push(['matriz','sin',nf(r.mtzSin)+' referencias sin auxiliar ('+esc(co)+')']);
+  if(!it.length) return '<div class="hint" style="margin-top:12px">Sin pendientes por completar.</div>';
+  return '<h2>Pendientes por completar</h2><div class="card gold">'+it.map(function(x){ return '<button class="btn ghost block" style="margin-bottom:6px;text-align:left" data-act="irpend" data-v="'+x[0]+'" data-f="'+x[1]+'">'+x[2]+' →</button>'; }).join("")+'<p class="small muted">Se detectan solos: lo que llegue en un listado y no esté completo queda aquí para completarlo a mano.</p></div>';
+}
+ACT.irpend=function(el,d){ var v=d("v"), f=d("f"); if(v==="ofertas") OF.filtro=f; else if(v==="maestro") MA.f=f; else if(v==="matriz") MT.f=f; else if(v==="rutas") RT.f=f; go(v); alEntrar(v); };
+
+/* ===== Maestro de productos: lista editable ===== */
+var MA={f:"todos",q:""};
+VIEWS.maestro=function(){
+  topbar("Maestro de productos",subtituloUsuario(),true);
+  var ks=Object.keys(S.mae), c={inc:0,desc:0,barras:0,gl:0,pv:0};
+  ks.forEach(function(k){ var f=faltasMae(S.mae[k]); if(f.length) c.inc++; if(f.indexOf("descripción")>=0) c.desc++; if(f.indexOf("barras")>=0) c.barras++; if(f.indexOf("grupo")>=0||f.indexOf("línea")>=0) c.gl++; if(f.indexOf("peso")>=0||f.indexOf("volumen")>=0) c.pv++; });
+  var h='<h1>Maestro de productos</h1><p class="muted small">Compartido por las 5 ciudades. Se alimenta solo: cada referencia nueva que llegue en un listado se registra aquí y queda pendiente hasta completar sus datos.</p>';
+  h+='<div class="kpis"><div class="kpi"><b>'+nf(ks.length)+'</b><span>Productos</span></div><div class="kpi"><b>'+nf(c.inc)+'</b><span>Incompletos</span></div><div class="kpi"><b>'+nf(ks.length-c.inc)+'</b><span>Completos</span></div></div>';
+  var fl=[["todos","Todos"],["inc","Incompletos ("+nf(c.inc)+")"],["desc","Sin descripción ("+nf(c.desc)+")"],["barras","Sin barras ("+nf(c.barras)+")"],["gl","Sin grupo/línea ("+nf(c.gl)+")"],["pv","Sin peso/volumen ("+nf(c.pv)+")"]];
+  h+='<div class="seg" style="margin-top:10px">'+fl.map(function(f){ return '<span class="chip btn2 '+(MA.f===f[0]?"sel":"")+'" data-act="mafiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>';
+  h+='<input type="search" id="maq" placeholder="Buscar referencia o descripción" value="'+esc(MA.q)+'" style="margin-top:8px">';
+  var q=normH(MA.q);
+  var lista=ks.filter(function(k){
+    var d=S.mae[k], f=faltasMae(d);
+    if(MA.f==="inc"&&!f.length) return false; if(MA.f==="desc"&&f.indexOf("descripción")<0) return false; if(MA.f==="barras"&&f.indexOf("barras")<0) return false;
+    if(MA.f==="gl"&&f.indexOf("grupo")<0&&f.indexOf("línea")<0) return false; if(MA.f==="pv"&&f.indexOf("peso")<0&&f.indexOf("volumen")<0) return false;
+    return !q||normH(k+" "+(d.d||"")).indexOf(q)>=0;
+  }).sort(ordenRef);
+  h+='<p class="small muted">'+nf(lista.length)+' productos'+(lista.length>100?' (se muestran los primeros 100: usa el buscador)':'')+'</p>';
+  h+=lista.slice(0,100).map(function(k){ var d=S.mae[k], f=faltasMae(d);
+    return '<button class="task" data-act="maeabrir" data-k="'+esc(k)+'"><div class="tt"><b class="mono">'+esc(k)+'</b>'+(f.length?'<span class="chip st-nov">Falta: '+esc(f.slice(0,3).join(", "))+(f.length>3?"…":"")+'</span>':'<span class="chip st-ok">Completo</span>')+'</div><div class="sub">'+esc(d.d||"(sin descripción)")+'</div><div class="mini"><span class="chip">Emp. '+esc(d.u||1)+'</span>'+(d.g?'<span class="chip">'+esc(d.g)+'</span>':'')+(d.l?'<span class="chip">'+esc(d.l)+'</span>':'')+'</div></button>'; }).join("");
+  h+='<div class="sp"></div><button class="btn gold block" data-act="maenuevo">+ Agregar producto</button><div class="sp"></div>'+
+    '<div class="card gold"><b>Cargar maestro (Excel)</b><p class="small muted">Columnas: Referencia, Descripción, Código de barras, Factor U.M., GRUPO SHOPPER, LINEA PROVEEDOR, 001-PESO INDIVIDUAL, 001-ANCHO/ALTO/PROFUNDIDAD EMBALAJE y 001-VOLUMEN INDIVIDUAL. También acepta la hoja MAESTRO con U.M. y Desc. U.M. (una fila por presentación). Completa lo que falte sin borrar lo existente.</p><button class="btn block" data-act="maecargar">Cargar maestro</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="maestro">Descargar plantilla</button></div>'+
+    '<div class="sp"></div><button class="btn ghost block" data-act="maerefrescar">Actualizar desde la nube</button>';
+  app(h); enlazarBuscador("maq",function(v){ MA.q=v; });
+};
+ACT.mafiltro=function(el,d){ MA.f=d("f"); render(); };
+function hojaProducto(k){
+  var d=k?(S.mae[k]||{}):{}, nuevo=!k;
+  var bg=abrirSheet('<h3>'+(nuevo?'Nuevo producto':esc(k))+'</h3>'+
+    (nuevo?'<label class="lb">Referencia</label><input id="mpRef" type="text" autocapitalize="characters">':'')+
+    '<label class="lb">Descripción</label><input id="mpD" type="text" value="'+esc(d.d||"")+'">'+
+    '<label class="lb">Código de barras</label><input id="mpB" type="text" inputmode="numeric" value="'+esc(d.b||"")+'">'+
+    '<div class="row"><div class="grow"><label class="lb">Unidades por caja</label><input id="mpU" type="number" min="1" value="'+esc(d.u||1)+'"></div><div class="grow"><label class="lb">Peso individual (kg)</label><input id="mpP" type="number" step="any" value="'+esc(d.p||"")+'"></div></div>'+
+    '<label class="lb">Grupo shopper</label><input id="mpG" type="text" value="'+esc(d.g||"")+'">'+
+    '<label class="lb">Línea proveedor</label><input id="mpL" type="text" value="'+esc(d.l||"")+'">'+
+    '<div class="row"><div class="grow"><label class="lb">Volumen individual</label><input id="mpVi" type="number" step="any" value="'+esc(d.vi||"")+'"></div><div class="grow"><label class="lb">Volumen embalaje</label><input id="mpVe" type="number" step="any" value="'+esc(d.ve||"")+'"></div></div>'+
+    '<div class="sp"></div><button class="btn gold block" id="mpOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="mpX">Cancelar</button>');
+  $("#mpX",bg).onclick=cerrarSheet;
+  $("#mpOk",bg).onclick=async function(){
+    var ref=nuevo?($("#mpRef",bg).value||"").trim().toUpperCase():k; if(!ref){ toast("Escribe la referencia"); return; }
+    var v=function(id){ return ($(id,bg).value||"").trim(); }, n=function(id){ var x=parseFloat(String($(id,bg).value).replace(",",".")); return x>0?x:0; };
+    var o=Object.assign({},S.mae[ref]||{},{d:v("#mpD"),b:v("#mpB"),u:n("#mpU")||1,g:v("#mpG"),l:v("#mpL"),p:n("#mpP"),vi:n("#mpVi"),ve:n("#mpVe"),origen:(S.mae[ref]&&S.mae[ref].origen)||"manual",actualizadoEn:ahora()});
+    try{ await DB.set("maestro",ref,o); S.mae[ref]=o; cerrarSheet(); toast("Producto "+ref+" guardado"); render(); }
+    catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
+  };
+}
+ACT.maeabrir=function(el,d){ hojaProducto(d("k")); };
+ACT.maenuevo=function(){ hojaProducto(""); };
+
+/* ===== Matriz: lista editable por referencia (auxiliar, ubicacion y orden), con asignacion masiva ===== */
+var MT={f:"todas",q:"",aux:""};
+async function actualizarMatriz(co,refs,cambios){
+  var M=S.matriz[co]=S.matriz[co]||{};
+  var docs=refs.map(function(r){ var prev=M[r]||{}; return {id:r,datos:Object.assign({referencia:r,descItem:prev.descItem||(S.mae[r]&&S.mae[r].d)||"",zona:"",ubicacion:"",secuencia:0,auxiliarId:""},prev,cambios,{actualizadoEn:ahora(),actualizadoPor:S.me.id})}; });
+  await DB.setMany("matrices/"+co+"/lineas",docs); docs.forEach(function(n){ M[n.id]=n.datos; });
+}
+function matrizFiltrada(co){
+  var M=S.matriz[co]||{}, q=normH(MT.q);
+  return Object.keys(M).filter(function(k){ var m=M[k];
+    if(MT.f==="sin"&&m.auxiliarId) return false; if(MT.f==="con"&&!m.auxiliarId) return false; if(MT.aux&&m.auxiliarId!==MT.aux) return false;
+    return !q||normH(k+" "+(m.descItem||"")+" "+(m.ubicacion||"")+" "+(m.zona||"")).indexOf(q)>=0;
+  }).sort(function(a,b){ var x=M[a].secuencia||1e9, y=M[b].secuencia||1e9; return (x-y)||ordenRef(a,b); });
+}
+function matrizListaHtml(co){
+  var M=S.matriz[co]||{}, lista=matrizFiltrada(co), auxs={}; Object.keys(M).forEach(function(k){ if(M[k].auxiliarId) auxs[M[k].auxiliarId]=1; });
+  var h='<h2>Referencias</h2><div class="seg">'+[["todas","Todas"],["sin","Sin asignar"],["con","Asignadas"]].map(function(f){ return '<span class="chip btn2 '+(MT.f===f[0]?"sel":"")+'" data-act="mtfiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>';
+  h+='<div class="row" style="margin-top:8px"><input type="search" id="mtq" class="grow" placeholder="Buscar referencia, descripción o ubicación" value="'+esc(MT.q)+'"><select id="mtaux" style="max-width:45%"><option value="">Todos los auxiliares</option>'+Object.keys(auxs).map(function(a){ return '<option value="'+esc(a)+'"'+(MT.aux===a?" selected":"")+'>'+esc(nombreDe(a))+'</option>'; }).join("")+'</select></div>';
+  h+='<p class="small muted">'+nf(lista.length)+' referencias'+(lista.length>100?' (se muestran las primeras 100)':'')+'</p>';
+  if(lista.length>1) h+='<button class="btn ghost sm" data-act="mtmasivo">Asignar las '+nf(lista.length)+' de la lista a un auxiliar…</button><div class="sp"></div>';
+  h+=lista.slice(0,100).map(function(k){ var m=M[k];
+    return '<button class="task" data-act="mtabrir" data-k="'+esc(k)+'"><div class="tt"><b class="mono">'+esc(k)+'</b>'+(m.auxiliarId?'<span class="chip st-ok">'+esc(nombreDe(m.auxiliarId))+'</span>':'<span class="chip st-nov">Sin asignar</span>')+'</div><div class="sub">'+esc(m.descItem||(S.mae[k]&&S.mae[k].d)||"(sin descripción)")+'</div><div class="mini">'+(m.ubicacion?'<span class="chip">Ubic. '+esc(m.ubicacion)+'</span>':'')+(m.zona?'<span class="chip">'+esc(m.zona)+'</span>':'')+(m.secuencia?'<span class="chip">Orden '+esc(m.secuencia)+'</span>':'')+'</div></button>'; }).join("");
+  h+='<div class="sp"></div><button class="btn gold block" data-act="mtnuevo">+ Agregar referencia a la matriz</button>';
+  return h;
+}
+function enlazarMatriz(){
+  enlazarBuscador("mtq",function(v){ MT.q=v; });
+  var s=$("#mtaux"); if(s) s.onchange=function(){ MT.aux=s.value; render(); };
+}
+ACT.mtfiltro=function(el,d){ MT.f=d("f"); render(); };
+function hojaLinea(k){
+  var co=coActual(), nuevo=!k, m=k?(S.matriz[co]||{})[k]||{}:{};
+  var bg=abrirSheet('<h3>'+(nuevo?'Nueva referencia en la matriz':esc(k))+'</h3>'+(nuevo?'<label class="lb">Referencia</label><input id="mlRef" type="text" autocapitalize="characters">':'<p class="small muted">'+esc(m.descItem||(S.mae[k]&&S.mae[k].d)||"")+'</p>')+
+    '<label class="lb">Auxiliar</label><select id="mlAux">'+selAux(co,m.auxiliarId||"")+'</select>'+
+    '<label class="lb">Ubicación en la bodega</label><input id="mlUb" type="text" value="'+esc(m.ubicacion||"")+'" placeholder="Ej. P2-A14">'+
+    '<div class="row"><div class="grow"><label class="lb">Orden de recorrido</label><input id="mlSeq" type="number" min="0" value="'+esc(m.secuencia||"")+'"></div><div class="grow"><label class="lb">Zona</label><input id="mlZona" type="text" value="'+esc(m.zona||"")+'"></div></div>'+
+    '<div class="sp"></div><button class="btn gold block" id="mlOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="mlX">Cancelar</button>');
+  $("#mlX",bg).onclick=cerrarSheet;
+  $("#mlOk",bg).onclick=async function(){
+    var ref=nuevo?($("#mlRef",bg).value||"").trim().toUpperCase():k; if(!ref){ toast("Escribe la referencia"); return; }
+    try{ await actualizarMatriz(co,[ref],{auxiliarId:$("#mlAux",bg).value,ubicacion:($("#mlUb",bg).value||"").trim(),secuencia:parseInt($("#mlSeq",bg).value,10)||0,zona:($("#mlZona",bg).value||"").trim()}); cerrarSheet(); toast("Guardado"); render(); }
+    catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
+  };
+}
+ACT.mtabrir=function(el,d){ hojaLinea(d("k")); };
+ACT.mtnuevo=function(){ hojaLinea(""); };
+ACT.mtmasivo=function(){
+  var co=coActual(), lista=matrizFiltrada(co);
+  var bg=abrirSheet('<h3>Asignar '+nf(lista.length)+' referencias</h3><p class="small muted">Se asignan todas las referencias de la lista filtrada al auxiliar que elijas.</p><label class="lb">Auxiliar</label><select id="mmAux">'+selAux(co,"")+'</select><div class="sp"></div><button class="btn gold block" id="mmOk">Asignar</button><div class="sp"></div><button class="btn ghost block" id="mmX">Cancelar</button>');
+  $("#mmX",bg).onclick=cerrarSheet;
+  $("#mmOk",bg).onclick=async function(){ var a=$("#mmAux",bg).value; if(!a){ toast("Elige un auxiliar"); return; }
+    try{ toast("Guardando…",5000); await actualizarMatriz(co,lista,{auxiliarId:a}); cerrarSheet(); toast(nf(lista.length)+" referencias asignadas a "+nombreDe(a)); render(); }catch(e){ toast("No se pudo guardar: "+(e.message||e)); } };
+};
+
+/* ===== Autoalimentacion: lo que llega en un listado se registra solo ===== */
+async function registrarPendientes(items,co){
+  var nuevosM=[], rellenar=[], nuevasL=[], M=await cargarMatriz(co);
+  items.forEach(function(it){
+    var k=String(it.ref||"").toUpperCase(); if(!k||esOferta(k,it.desc)) return;
+    var lim=function(x){ return x&&!/^SIN /i.test(x)?x:""; }, prev=S.mae[it.ref];
+    if(!prev) nuevosM.push({id:it.ref,datos:{d:it.desc||"",b:it.bar||"",u:it.ue||1,g:lim(it.grupo),l:lim(it.linea),p:0,vi:0,ve:0,origen:"listado",creadoEn:ahora()}});
+    else { var c={}, ch=false; if(!prev.d&&it.desc){ c.d=it.desc; ch=true; } if(!prev.b&&it.bar){ c.b=it.bar; ch=true; } if((!prev.g||/^SIN /i.test(prev.g))&&lim(it.grupo)){ c.g=it.grupo; ch=true; } if((!prev.l||/^SIN /i.test(prev.l))&&lim(it.linea)){ c.l=it.linea; ch=true; } if(ch) rellenar.push({id:it.ref,datos:Object.assign({},prev,c)}); }
+    if(!M[it.ref]) nuevasL.push({id:it.ref,datos:{referencia:it.ref,descItem:it.desc||(prev&&prev.d)||"",zona:"",ubicacion:"",secuencia:0,auxiliarId:"",origen:"listado",actualizadoEn:ahora(),actualizadoPor:S.me?S.me.id:""}});
+  });
+  if(nuevosM.length||rellenar.length) await DB.setMany("maestro",nuevosM.concat(rellenar));
+  nuevosM.concat(rellenar).forEach(function(n){ S.mae[n.id]=n.datos; });
+  if(nuevasL.length){ await DB.setMany("matrices/"+co+"/lineas",nuevasL); S.matriz[co]=S.matriz[co]||{}; nuevasL.forEach(function(n){ S.matriz[co][n.id]=n.datos; }); }
+  return {maestro:nuevosM.length,completados:rellenar.length,matriz:nuevasL.length};
+}
+
+/* ===== Ofertas: alta manual ===== */
+ACT.ofnueva=function(){
+  var bg=abrirSheet('<h3>Nueva oferta</h3><label class="lb">Código de la oferta</label><input id="onK" type="text" autocapitalize="characters" placeholder="OF000123"><label class="lb">Descripción</label><input id="onD" type="text"><label class="lb">Categoría</label><select id="onC"><option value="">Sin categorizar</option><option value="1">Virtual: se desglosa en componentes</option><option value="0">No virtual: se deja como producto</option></select><p class="small muted">La composición se carga desde Excel (Cargar composición) o llega con los kits del ERP.</p><div class="sp"></div><button class="btn gold block" id="onOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="onX">Cancelar</button>');
+  $("#onX",bg).onclick=cerrarSheet;
+  $("#onOk",bg).onclick=async function(){
+    var k=($("#onK",bg).value||"").trim().toUpperCase(); if(!k){ toast("Escribe el código"); return; } var v=$("#onC",bg).value;
+    try{ await DB.set("ofertas_cat",k,Object.assign({},S.cat[k]||{},{codigo:k,desc:($("#onD",bg).value||"").trim(),virtual:v===""?null:v==="1",origen:(S.cat[k]&&S.cat[k].origen)||"manual",actualizadoEn:ahora(),actualizadoPor:S.me.id})); await cargarBase(false); cerrarSheet(); toast("Oferta "+k+" guardada"); render(); }
+    catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
   };
 };
 
@@ -1185,6 +1386,7 @@ VIEWS.nueva=function(){
     if(N.iguales) h+='<div class="hint" style="margin-top:8px">Las requisiciones y las remisiones traen las mismas cantidades: la remisión es el resultado de la requisición. Se usó la remisión para no contar doble.</div>';
     if(esAdmin()) h+='<label class="lb">Centro de operación</label><div class="seg">'+CIUDADES.map(function(c){ return '<span class="chip btn2 '+(N.co===c.co?"sel":"")+'" data-act="nvco" data-co="'+c.co+'">'+c.nombre+'</span>'; }).join("")+'</div>';
     h+='<div class="kpis" style="margin-top:10px"><div class="kpi"><b>'+nf(N.items.length)+'</b><span>Referencias</span></div><div class="kpi"><b>'+nf(N.unid)+'</b><span>Unidades</span></div><div class="kpi"><b>'+nf(N.docs)+'</b><span>Documentos</span></div></div>';
+    h+='<div class="card gold"><b>Listado de separación (para imprimir)</b><p class="small muted">Genera el listado en hoja horizontal por ruta y por piso o auxiliar, con cajas, unidades sueltas, peso, volumen y vehículo sugerido. No necesita matriz ni sesión.</p><button class="btn block" data-act="nvlistado">Ver e imprimir listado</button></div>';
     if(N.des.nOF||N.des.dejadas) h+='<p class="small muted">Ofertas: '+N.des.nOF+' desglosadas en '+N.des.nComp+' líneas'+(N.des.dejadas?' · '+N.des.dejadas+' se dejan como producto armado':'')+'.</p>';
     var sin=Object.keys(N.des.sin); if(sin.length) h+='<div class="hint warn" style="margin-top:8px">Ofertas que deben desglosarse pero no tienen composición (quedan como producto): <b>'+sin.length+'</b> — '+esc(sin.slice(0,6).join(", "))+(sin.length>6?"…":"")+'. Cargue su composición en Administración → Ofertas.</div>';
     if(N.ofNuevas) h+='<div class="hint" style="margin-top:8px"><b>'+N.ofNuevas+' oferta'+(N.ofNuevas>1?'s nuevas detectadas':' nueva detectada')+'</b> en estos archivos: quedaron registradas en Administración → Ofertas para que las categorices como virtual o no. Mientras tanto se desglosan solo las de facturas y pedidos que tengan composición.</div>';
@@ -1214,7 +1416,7 @@ ACT.nvarchivos=function(){
     if(!todas.length){ toast(err[0]||"No hay líneas para cargar"); return; }
     var co=esAdmin()?(coDeBodega((todas.filter(function(l){ return l.bod; })[0]||{}).bod)||S.coSel):S.me.co;
     NUEVA={ok:true,raw:todas,archivos:detalle,omitidos:omit,errores:err,tipos:resumenTipos(todas),iguales:mismosProductos(todas),co:co,titulo:"Alistamiento "+hoy(),rep:null};
-    cargarBase(false,co).catch(function(){}).then(function(){ return registrarOfertas(todas,"listado",co).catch(function(){ return 0; }); }).then(function(nuevas){ NUEVA.ofNuevas=nuevas||0; armarNuevaAli(); render(); repartirNueva(); });
+    cargarBase(false,co).catch(function(){}).then(function(){ return registrarCiudades(todas).catch(function(){}).then(function(){ return registrarOfertas(todas,"listado",co).catch(function(){ return 0; }); }); }).then(function(nuevas){ NUEVA.ofNuevas=nuevas||0; armarNuevaAli(); render(); repartirNueva(); });
   });
 };
 function armarNuevaAli(){
@@ -1235,7 +1437,8 @@ ACT.nvcrear=async function(){
     if(N.rep.sin.length) docs.push(tareaDoc("alistamiento",sid,titulo,co,"",N.rep.sin));
     await DB.set("ops_sesiones",sid,{modulo:"alistamiento",co:co,ciudad:ciudad,titulo:titulo,fecha:hoy(),creadoPor:S.me.nombre,creadoPorId:S.me.id,creadoEn:ahora(),totalRefs:N.items.length,totalUnidades:N.unid,docs:N.docs,archivos:N.archivos.map(function(a){ return {n:a.n,t:a.t,l:a.l}; })});
     await DB.setMany("ops_tareas",docs);
-    toast("Sesión creada: "+docs.length+" tareas asignadas"); NUEVA={};
+    var reg={maestro:0,completados:0,matriz:0}; try{ reg=await registrarPendientes(N.items,co); }catch(e){}
+    toast("Sesión creada: "+docs.length+" tareas"+(reg.maestro||reg.matriz?" · "+(reg.maestro?reg.maestro+" productos nuevos al maestro":"")+(reg.maestro&&reg.matriz?" y ":"")+(reg.matriz?reg.matriz+" referencias nuevas a la matriz, pendientes de asignar":""):""),5000); NUEVA={};
     SESV={id:sid,cargando:true,err:"",ses:null,tareas:[]}; nav.pop(); go("ses"); cargarSes();
   }catch(e){ N.creando=false; toast("No se pudo crear la sesión: "+(e.message||e),4500); render(); }
 };
@@ -1438,6 +1641,100 @@ ACT.cargafac=function(){
   });
 };
 
+/* ===== 65_listado.js ===== */
+/* ---------- rutas por poblacion y listado de separacion impreso (para bodegas sin RF ni matriz formal) ---------- */
+function claveCiu(c){ return normH(c).replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); }
+function rutaDe(ciu){ var p=S.pobl[claveCiu(ciu)]; return (p&&p.ruta)||"SIN RUTA"; }
+/* Las poblaciones nuevas que llegan en un listado se registran solas (sin ruta) para asignarles ruta a mano */
+async function registrarCiudades(lineas){
+  var nv=[], vistos={}; lineas.forEach(function(l){ var c=String(l.ciu||"").trim(), k=claveCiu(c); if(!k||vistos[k]||S.pobl[k]) return; vistos[k]=1; nv.push({id:k,datos:{ciudad:c,ruta:"",origen:"listado",creadoEn:ahora()}}); });
+  if(!nv.length) return 0; await DB.setMany("poblaciones",nv); nv.forEach(function(n){ S.pobl[n.id]=n.datos; }); return nv.length;
+}
+
+/* ===== Pantalla de rutas ===== */
+var RT={f:"todas",q:""};
+VIEWS.rutas=function(){
+  topbar("Rutas por población",subtituloUsuario(),true);
+  var ks=Object.keys(S.pobl), sin=ks.filter(function(k){ return !S.pobl[k].ruta; }).length, q=normH(RT.q);
+  var h='<h1>Rutas por población</h1><p class="muted small">Cada población pertenece a una ruta. Se usa para filtrar el listado de separación. Las poblaciones nuevas que lleguen en los archivos se agregan solas y quedan pendientes de ruta.</p>';
+  h+='<div class="kpis"><div class="kpi"><b>'+nf(ks.length)+'</b><span>Poblaciones</span></div><div class="kpi"><b>'+nf(new Set(ks.map(function(k){ return S.pobl[k].ruta; }).filter(Boolean)).size)+'</b><span>Rutas</span></div><div class="kpi"><b>'+nf(sin)+'</b><span>Sin ruta</span></div></div>';
+  h+='<div class="seg" style="margin-top:10px">'+[["todas","Todas"],["sin","Sin ruta ("+sin+")"]].map(function(f){ return '<span class="chip btn2 '+(RT.f===f[0]?"sel":"")+'" data-act="rtfiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>';
+  h+='<input type="search" id="rtq" placeholder="Buscar población o ruta" value="'+esc(RT.q)+'" style="margin-top:8px">';
+  var lista=ks.filter(function(k){ var p=S.pobl[k]; if(RT.f==="sin"&&p.ruta) return false; return !q||normH(p.ciudad+" "+p.ruta).indexOf(q)>=0; }).sort(function(a,b){ return String(S.pobl[a].ciudad).localeCompare(String(S.pobl[b].ciudad)); });
+  h+=lista.slice(0,150).map(function(k){ var p=S.pobl[k]; return '<button class="task" data-act="rtabrir" data-k="'+esc(k)+'"><div class="tt"><b>'+esc(p.ciudad)+'</b>'+(p.ruta?'<span class="chip st-ok">'+esc(p.ruta)+'</span>':'<span class="chip st-nov">Sin ruta</span>')+'</div></button>'; }).join("");
+  if(!lista.length) h+='<div class="empty">No hay poblaciones'+(RT.f==="sin"?" sin ruta":"")+'.</div>';
+  h+='<div class="sp"></div><button class="btn gold block" data-act="rtnuevo">+ Agregar población</button><div class="sp"></div><div class="card gold"><b>Cargar poblaciones y rutas (Excel)</b><p class="small muted">Columnas: Ciudad, Ruta (la hoja POBLACIONES de la macro).</p><button class="btn block" data-act="rtcargar">Cargar Excel</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="poblaciones">Descargar plantilla</button></div>';
+  app(h); enlazarBuscador("rtq",function(v){ RT.q=v; });
+};
+ACT.rtfiltro=function(el,d){ RT.f=d("f"); render(); };
+function hojaRuta(k){
+  var p=k?S.pobl[k]:{}, nuevo=!k, rutas=Array.from(new Set(Object.keys(S.pobl).map(function(x){ return S.pobl[x].ruta; }).filter(Boolean))).sort();
+  var bg=abrirSheet('<h3>'+(nuevo?"Nueva población":esc(p.ciudad))+'</h3>'+(nuevo?'<label class="lb">Población</label><input id="rtC" type="text">':'')+'<label class="lb">Ruta</label><input id="rtR" type="text" list="rtLista" value="'+esc(p.ruta||"")+'" autocapitalize="characters"><datalist id="rtLista">'+rutas.map(function(r){ return '<option value="'+esc(r)+'">'; }).join("")+'</datalist><div class="sp"></div><button class="btn gold block" id="rtOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="rtX">Cancelar</button>');
+  $("#rtX",bg).onclick=cerrarSheet;
+  $("#rtOk",bg).onclick=async function(){
+    var c=nuevo?($("#rtC",bg).value||"").trim():p.ciudad; if(!c){ toast("Escribe la población"); return; } var id=claveCiu(c), ruta=($("#rtR",bg).value||"").trim().toUpperCase();
+    try{ var d=Object.assign({},S.pobl[id]||{},{ciudad:c,ruta:ruta,actualizadoEn:ahora()}); await DB.set("poblaciones",id,d); S.pobl[id]=d; cerrarSheet(); toast("Guardado"); render(); }catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
+  };
+}
+ACT.rtabrir=function(el,d){ hojaRuta(d("k")); };
+ACT.rtnuevo=function(){ hojaRuta(""); };
+ACT.rtcargar=function(){
+  elegirExcel(async function(wb){
+    var t=tablaDe(wb,["ciudad"],"POBLACIONES"); if(!t){ toast("No se encontró la columna Ciudad"); return; }
+    var h=t.hdr.map(normH), ic=h.indexOf("ciudad"), ir=h.indexOf("ruta"); if(ir<0){ toast("Falta la columna Ruta"); return; }
+    var docs=[]; t.rows.forEach(function(r){ var c=String(r[ic]||"").trim(); if(!c) return; var id=claveCiu(c); docs.push({id:id,datos:Object.assign({},S.pobl[id]||{},{ciudad:c,ruta:String(r[ir]||"").trim().toUpperCase(),actualizadoEn:ahora()})}); });
+    if(!docs.length){ toast("No hay filas para cargar"); return; }
+    if(!confirm("Se cargarán "+docs.length+" poblaciones con su ruta. ¿Continuar?")) return;
+    try{ await DB.setMany("poblaciones",docs); docs.forEach(function(n){ S.pobl[n.id]=n.datos; }); toast(docs.length+" poblaciones guardadas"); }catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
+    render();
+  });
+};
+
+/* ===== Listado de separacion (se imprime en horizontal) ===== */
+var LST={ruta:"",piso:""};
+function sugerirVehiculo(kg,m3){
+  if(kg<=3000&&m3<=18) return "Turbo"; if(kg<=8000&&m3<=35) return "Sencillo"; if(kg<=17000&&m3<=50) return "Doble Troque";
+  return "Supera Doble Troque (validar vehículo mayor)";
+}
+function listadoBase(N){ return N.raw.filter(function(l){ return !(N.iguales&&l.t==="REQ"); }); }
+function listadoCalc(N){
+  var lineas=listadoBase(N); if(LST.ruta) lineas=lineas.filter(function(l){ return rutaDe(l.ciu)===LST.ruta; });
+  var des=desglosar(lineas,N.co), items=consolidar(des.lineas), M=S.matriz[N.co]||{};
+  if(LST.piso) items=items.filter(function(it){ var a=(M[it.ref]||{}).auxiliarId||""; return LST.piso==="__sin"?!a:a===LST.piso; });
+  var conSeq=items.some(function(it){ return (M[it.ref]||{}).secuencia>0; });
+  items.sort(function(a,b){ if(conSeq){ var x=(M[a.ref]||{}).secuencia||1e9, y=(M[b.ref]||{}).secuencia||1e9; if(x!==y) return x-y; } return ordenRef(a.ref,b.ref); });
+  var t={cajas:0,sueltas:0,kg:0,m3:0,sin:[],unid:0};
+  items.forEach(function(it){
+    var ue=it.ue>1?it.ue:1, c=ue>1?Math.floor(it.total/ue):0, s=it.total-c*ue; it._c=c; it._s=s; t.cajas+=c; t.sueltas+=s; t.unid+=it.total;
+    var m=S.mae[it.ref]; if(m&&m.p>0&&(m.vi>0||m.ve>0)){ t.kg+=it.total*m.p/1000; t.m3+=(c*(m.ve||m.vi*ue)+s*(m.vi||0))/1e6; } else t.sin.push(it.ref);
+  });
+  return {items:items,t:t,M:M,conUbic:items.some(function(it){ return (M[it.ref]||{}).ubicacion; })};
+}
+ACT.nvlistado=async function(){ LST={ruta:"",piso:""}; try{ await cargarMatriz(NUEVA.co); }catch(e){} go("listado"); };
+ACT.lsruta=function(el,d){ LST.ruta=d("v"); render(); };
+ACT.lspiso=function(el,d){ LST.piso=d("v"); render(); };
+ACT.lsimprimir=function(){ window.print(); };
+VIEWS.listado=function(){
+  var N=NUEVA; topbar("Listado de separación",subtituloUsuario(),true);
+  if(!N||!N.ok){ app('<div class="empty">Carga primero los archivos de la sesión.</div>'); return; }
+  var rutas={}; listadoBase(N).forEach(function(l){ var r=rutaDe(l.ciu); rutas[r]=(rutas[r]||0)+1; });
+  var M0=S.matriz[N.co]||{}, auxs={}; Object.keys(M0).forEach(function(k){ if(M0[k].auxiliarId) auxs[M0[k].auxiliarId]=1; });
+  var chip=function(act,v,txt,sel){ return '<span class="chip btn2 '+(sel?"sel":"")+'" data-act="'+act+'" data-v="'+esc(v)+'">'+esc(txt)+'</span>'; };
+  var h='<div class="noprint"><div class="row"><h1 class="grow" style="margin:6px 0">Listado de separación</h1><button class="btn gold sm" data-act="lsimprimir">Imprimir</button></div><p class="muted small">Se imprime en hoja horizontal. Elige la ruta y el piso o auxiliar para sacar un listado por persona.</p>'+
+    '<label class="lb">Ruta</label><div class="seg">'+chip("lsruta","","TODAS",!LST.ruta)+Object.keys(rutas).sort().map(function(r){ return chip("lsruta",r,r+" ("+rutas[r]+")",LST.ruta===r); }).join("")+'</div>'+
+    '<label class="lb">Piso / auxiliar</label><div class="seg">'+chip("lspiso","","TODOS",!LST.piso)+Object.keys(auxs).map(function(a){ return chip("lspiso",a,nombreDe(a),LST.piso===a); }).join("")+chip("lspiso","__sin","Sin asignar",LST.piso==="__sin")+'</div></div>';
+  var C=listadoCalc(N), t=C.t, ciudad=(ciudadPorCo(N.co)||{nombre:N.co}).nombre;
+  var fp=LST.piso?(LST.piso==="__sin"?"Sin asignar":nombreDe(LST.piso)):"TODOS";
+  h+='<div class="lst-sheet"><div class="lst-title">LISTADO DE SEPARACIÓN · '+esc(ciudad.toUpperCase())+'</div>'+
+    '<div class="lst-head"><table class="lst-res"><tr><th>Piso / auxiliar</th><td>'+esc(fp)+'</td><th>Cajas totales</th><td>'+nf(t.cajas)+'</td></tr><tr><th>Ruta</th><td><b>'+esc(LST.ruta||"TODAS")+'</b></td><th>Unid. sueltas</th><td>'+nf(t.sueltas)+'</td></tr><tr><th>Fecha de generación</th><td>'+esc(new Date().toLocaleString("es-CO",{dateStyle:"short",timeStyle:"short"}))+'</td><th>Peso estimado</th><td>'+t.kg.toLocaleString("es-CO",{maximumFractionDigits:2})+' kg</td></tr><tr><th>Referencias</th><td>'+nf(C.items.length)+'</td><th>Volumen estimado</th><td>'+t.m3.toLocaleString("es-CO",{maximumFractionDigits:1})+' m³</td></tr><tr><th></th><td></td><th>Vehículo sugerido</th><td><b>'+esc(sugerirVehiculo(t.kg,t.m3))+'</b></td></tr></table></div>';
+  h+='<table class="lst"><thead><tr><th class="ck">✓</th>'+(C.conUbic?'<th>Ubicación</th>':'')+'<th>Referencia</th><th>Descripción</th><th>Bodega</th><th>Cód. barras</th><th class="n">U.E</th><th class="n">Cajas</th><th class="n">Unidades</th>'+(LST.piso?'':'<th>Auxiliar</th>')+'</tr></thead><tbody>'+
+    C.items.map(function(it){ var m=C.M[it.ref]||{}; return '<tr><td class="ck">☐</td>'+(C.conUbic?'<td>'+esc(m.ubicacion||"")+'</td>':'')+'<td><b>'+esc(it.ref)+'</b></td><td>'+esc(it.desc)+'</td><td>'+esc(it.bod)+'</td><td class="mono">'+esc(it.bar)+'</td><td class="n">'+esc(it.ue)+'</td><td class="n"><b>'+nf(it._c)+'</b></td><td class="n"><b>'+nf(it._s)+'</b></td>'+(LST.piso?'':'<td>'+esc(m.auxiliarId?nombreDe(m.auxiliarId):"")+'</td>')+'</tr>'; }).join("")+'</tbody></table>';
+  if(!C.items.length) h+='<div class="empty">No hay referencias con este filtro.</div>';
+  h+='</div>';
+  if(t.sin.length) h+='<div class="hint warn noprint" style="margin-top:10px"><b>'+t.sin.length+' referencias sin peso o volumen en el maestro</b>: el peso y el volumen estimados quedan por debajo de lo real. Complétalas en Administración → Maestro.</div>';
+  app(h);
+};
+
 /* ===== 99_boot.js ===== */
 /* ---------- eventos, carga al entrar a cada pantalla, actualizacion automatica y arranque ---------- */
 document.addEventListener("click",function(e){
@@ -1451,6 +1748,7 @@ function alEntrar(v){
     else if(v==="ali") cargarAli();
     else if(v==="desp") cargarDesp();
     else if(v==="matriz") abrirMatriz();
+    else if(v==="rutas") cargarBase(false).then(function(){ var c=cur(); if(c&&c.v==="rutas") render(); }).catch(function(){});
     else if(v==="ofertas"||v==="maestro") cargarBase(false).then(function(){ var c=cur(); if(c&&c.v===v) render(); }).catch(function(){});
   }catch(e){}
 }
