@@ -128,12 +128,13 @@ table.lst .ck{text-align:center;width:28px}
   main#app{max-width:none!important;width:100%!important;margin:0!important;padding:0!important}
   .lst-sheet{border:0;padding:0;margin:0;overflow:visible;border-radius:0}
   .lst-title{font-size:16px;padding:5px;border-radius:3px}
-  .lst-res{margin:5px 0;font-size:12px}
+  .lst-res{margin:5px 0;font-size:13px}
   .lst-res th,.lst-res td{padding:3px 7px}
   .lst-res th{width:11%;white-space:nowrap}
-  table.lst{font-size:13px;width:100%}
-  table.lst th{padding:4px 6px;font-size:12px}
-  table.lst td{padding:4px 6px;line-height:1.2}
+  table.lst{font-size:15px;width:100%}
+  table.lst th{padding:5px 7px;font-size:13px}
+  table.lst td{padding:5px 7px;line-height:1.2}
+  table.lst td.n{font-size:17px}
   table.lst .dc{width:100%}
   table.lst tbody tr:nth-child(even) td{background:#dcdcdc!important}
   table.lst tbody tr:nth-child(odd) td{background:#fff!important}
@@ -141,6 +142,9 @@ table.lst .ck{text-align:center;width:28px}
   table.lst tr{page-break-inside:avoid}
   .lst-title,table.lst th,table.lst td,.lst-res th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+.qc{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.qc .bx{font-size:1.1em;line-height:1}
+
 </style>
 </head>
 <body>
@@ -1877,6 +1881,8 @@ ACT.rtcargar=function(){
 };
 
 /* ===== Listado de separacion (se imprime en horizontal) ===== */
+/* casilla al frente de cada cantidad (solo si hay algo que separar) */
+function qty(n){ return n>0?'<div class="qc"><span class="bx">☐</span><b>'+nf(n)+'</b></div>':'<div class="qc"><span></span><b>0</b></div>'; }
 var LST={ruta:"",piso:""}, LSD={ses:null,tareas:[],M:{}};
 function sugerirVehiculo(kg,m3){
   if(kg<=3000&&m3<=18) return "Turbo"; if(kg<=8000&&m3<=35) return "Sencillo"; if(kg<=17000&&m3<=50) return "Doble Troque";
@@ -1885,10 +1891,12 @@ function sugerirVehiculo(kg,m3){
 /* El listado sale de la sesion ya creada: las tareas (con su auxiliar), el desglose por poblacion y la matriz vigente */
 function listadoCalc(){
   var ses=LSD.ses||{}, M=LSD.M||{}, ciu=ses.ciu||{}, items=[], porRuta=null;
+  /* sesiones creadas antes de guardar la bodega: se deduce del centro de operacion (06001, 07001, 08001…) */
+  var cc=ciudadPorCo(ses.co), bodSes=ses.bod||(cc?cc.pref+"001":"");
   if(LST.ruta){ porRuta={}; Object.keys(ciu).forEach(function(c){ if(rutaDe(c)!==LST.ruta) return; ciu[c].forEach(function(a){ porRuta[a[0]]=(porRuta[a[0]]||0)+a[1]; }); }); }
   LSD.tareas.forEach(function(t){ var aux=t.datos.asignadoId||""; (t.datos.items||[]).forEach(function(a){
     var tot=a[4]; if(porRuta){ tot=porRuta[a[0]]||0; if(!(tot>0)) return; }
-    items.push({ref:a[0],desc:a[1],bar:a[2],ue:a[3],total:tot,seq:(M[a[0]]&&M[a[0]].secuencia)||a[8]||0,aux:aux,bod:ses.bod||""}); }); });
+    items.push({ref:a[0],desc:a[1],bar:a[2],ue:a[3],total:tot,seq:(M[a[0]]&&M[a[0]].secuencia)||a[8]||0,aux:aux,bod:bodSes}); }); });
   if(LST.piso) items=items.filter(function(it){ return LST.piso==="__sin"?!it.aux:it.aux===LST.piso; });
   var conSeq=items.some(function(it){ return it.seq>0; });
   items.sort(function(a,b){ if(conSeq){ var x=a.seq||1e9, y=b.seq||1e9; if(x!==y) return x-y; } return ordenRef(a.ref,b.ref); });
@@ -1923,8 +1931,8 @@ VIEWS.listado=function(){
   var fp=LST.piso?(LST.piso==="__sin"?"Sin asignar":nombreDe(LST.piso)):"TODOS";
   h+='<div class="lst-sheet"><div class="lst-title">LISTADO DE SEPARACIÓN · '+esc(String(ciudad).toUpperCase())+'</div>'+
     '<div class="lst-head"><table class="lst-res"><tr><th>Piso / auxiliar</th><td>'+esc(fp)+'</td><th>Cajas totales</th><td>'+nf(t.cajas)+'</td><th>Peso estimado</th><td>'+t.kg.toLocaleString("es-CO",{maximumFractionDigits:2})+' kg</td></tr><tr><th>Ruta</th><td><b>'+esc(LST.ruta||"TODAS")+'</b></td><th>Unid. sueltas</th><td>'+nf(t.sueltas)+'</td><th>Volumen estimado</th><td>'+t.m3.toLocaleString("es-CO",{maximumFractionDigits:1})+' m³</td></tr><tr><th>Generado</th><td>'+esc(new Date().toLocaleString("es-CO",{dateStyle:"short",timeStyle:"short"}))+'</td><th>Referencias</th><td>'+nf(C.items.length)+'</td><th>Vehículo sugerido</th><td><b>'+esc(sugerirVehiculo(t.kg,t.m3))+'</b></td></tr></table></div>';
-  h+='<table class="lst"><thead><tr><th class="ck">✓</th>'+(C.conUbic?'<th>Ubicación</th>':'')+'<th>Referencia</th><th class="dc">Descripción</th><th>Bodega</th><th>Cód. barras</th><th class="n">U.E</th><th class="n">Cajas</th><th class="n">Unidades</th></tr></thead><tbody>'+
-    C.items.map(function(it){ var m=C.M[it.ref]||{}; return '<tr><td class="ck">☐</td>'+(C.conUbic?'<td>'+esc(m.ubicacion||"")+'</td>':'')+'<td><b>'+esc(it.ref)+'</b></td><td class="dc">'+esc(it.desc)+'</td><td>'+esc(it.bod)+'</td><td class="mono">'+esc(it.bar)+'</td><td class="n">'+esc(it.ue)+'</td><td class="n"><b>'+nf(it._c)+'</b></td><td class="n"><b>'+nf(it._s)+'</b></td></tr>'; }).join("")+'</tbody></table>';
+  h+='<table class="lst"><thead><tr>'+(C.conUbic?'<th>Ubicación</th>':'')+'<th>Referencia</th><th class="dc">Descripción</th><th>Bodega</th><th>Cód. barras</th><th class="n">U.E</th><th class="n">Cajas</th><th class="n">Unidades</th></tr></thead><tbody>'+
+    C.items.map(function(it){ var m=C.M[it.ref]||{}; return '<tr>'+(C.conUbic?'<td>'+esc(m.ubicacion||"")+'</td>':'')+'<td><b>'+esc(it.ref)+'</b></td><td class="dc">'+esc(it.desc)+'</td><td>'+esc(it.bod)+'</td><td class="mono">'+esc(it.bar)+'</td><td class="n">'+esc(it.ue)+'</td><td class="n">'+qty(it._c)+'</td><td class="n">'+qty(it._s)+'</td></tr>'; }).join("")+'</tbody></table>';
   if(!C.items.length) h+='<div class="empty">No hay referencias con este filtro.</div>';
   h+='</div>';
   if(t.sin.length) h+='<div class="hint warn noprint" style="margin-top:10px"><b>'+t.sin.length+' referencias sin peso o volumen en el maestro</b>: el peso y el volumen estimados quedan por debajo de lo real. Complétalas en Administración → Maestro.</div>';
