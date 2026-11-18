@@ -1154,20 +1154,6 @@ ACT.maecargar=function(){
 ACT.maerefrescar=function(){ cargarBase(true).then(function(){ toast("Maestro actualizado"); render(); }).catch(function(e){ toast(e.message||"Sin conexión"); }); };
 
 /* ---------- usuarios y roles (la misma coleccion "usuarios" de Semaforos) ---------- */
-VIEWS.usuarios=function(){
-  topbar("Usuarios y roles",subtituloUsuario(),true);
-  var h='<div class="row"><h1 class="grow" style="margin:6px 0">Usuarios y roles</h1><button class="btn sm" data-act="usnuevo">+ Agregar</button></div><p class="muted small">Los mismos usuarios y claves de Semáforos: un solo ingreso para todas las apps. Las claves las crea cada persona la primera vez que entra.</p>';
-  var cnt={administrador:0,coordinador:0,operario:0}; S.users.forEach(function(u){ if(u.activo!==false) cnt[u.rol]=(cnt[u.rol]||0)+1; });
-  h+='<div class="kpis"><div class="kpi"><b>'+cnt.administrador+'</b><span>Administradores</span></div><div class="kpi"><b>'+cnt.coordinador+'</b><span>Coordinadores</span></div><div class="kpi"><b>'+cnt.operario+'</b><span>Auxiliares</span></div></div>';
-  CIUDADES.concat([{co:"REG",nombre:REGIONAL.nombre}]).forEach(function(c){
-    var l=S.users.filter(function(u){ return u.co===c.co; }).sort(function(a,b){ var o={administrador:0,coordinador:1,operario:2}; return (o[a.rol]-o[b.rol])||String(a.nombre).localeCompare(String(b.nombre)); });
-    if(!l.length) return;
-    h+='<p class="grp-titulo">'+esc(c.nombre)+(c.co!=="REG"?' · C.O. '+c.co:'')+'</p>'+l.map(function(u){
-      return '<div class="user-row" style="cursor:default'+(u.activo===false?';opacity:.55':'')+'"><div class="avatar">'+esc(iniciales(u.nombre))+'</div><div class="grow"><div class="nm">'+esc(u.nombre)+'</div><div class="rl">'+esc(ROL_LABEL[u.rol]||u.rol)+(u.cargo?' · '+esc(u.cargo):'')+'</div></div><button class="btn ghost sm" data-act="ustog" data-id="'+esc(u.id)+'">'+(u.activo===false?"Activar":"Desactivar")+'</button></div>';
-    }).join("");
-  });
-  app(h);
-};
 ACT.ustog=async function(el,d){
   var u=S.users.filter(function(x){ return x.id===d("id"); })[0]; if(!u) return;
   if(u.id===S.me.id){ toast("No puedes desactivarte a ti mismo"); return; }
@@ -1409,6 +1395,84 @@ ACT.ofexpsincomp=function(){
   if(!l.length){ toast("No hay ofertas pendientes de composición"); return; }
   descargarXlsx("Ofertas_sin_composicion.xlsx","Ofertas",[["Referencia","Desc. Item","Referencia comp.","Desc. item comp.","Cantidad Requerida"]].concat(l.map(function(k){ return [k,ofDesc(k),"","",""]; })));
 };
+
+/* ===== 56_usuarios.js ===== */
+/* ---------- usuarios y roles: editar, activar/desactivar, eliminar y restablecer clave (mismos usuarios que Semaforos) ---------- */
+var US={claves:null,q:"",f:"activos"};
+async function cargarClaves(){
+  try{ var r=await DB.rpc("usuarios_con_clave",{}); US.claves=Array.isArray(r)?r.map(function(x){ return String(x).toLowerCase(); }):[]; }catch(e){ US.claves=null; }
+  var c=cur(); if(c&&c.v==="usuarios") render();
+}
+function tieneClaveU(u){ return US.claves&&US.claves.indexOf(String(u.id).toLowerCase())>=0; }
+VIEWS.usuarios=function(){
+  topbar("Usuarios y roles",subtituloUsuario(),true);
+  var cnt={administrador:0,coordinador:0,operario:0}, inact=0; S.users.forEach(function(u){ if(u.activo!==false) cnt[u.rol]=(cnt[u.rol]||0)+1; else inact++; });
+  var h='<div class="row"><h1 class="grow" style="margin:6px 0">Usuarios y roles</h1><button class="btn sm" data-act="usnuevo">+ Agregar</button></div><p class="muted small">Los mismos usuarios y claves de Semáforos: un solo ingreso para todas las apps. Toca un usuario para editarlo, desactivarlo, eliminarlo o restablecer su clave. Las claves las crea cada persona la primera vez que entra.</p>';
+  h+='<div class="kpis"><div class="kpi"><b>'+cnt.administrador+'</b><span>Administradores</span></div><div class="kpi"><b>'+cnt.coordinador+'</b><span>Coordinadores</span></div><div class="kpi"><b>'+cnt.operario+'</b><span>Auxiliares</span></div></div>';
+  h+='<div class="seg" style="margin-top:10px">'+[["activos","Activos"],["inactivos","Inactivos ("+inact+")"],["todos","Todos"]].map(function(f){ return '<span class="chip btn2 '+(US.f===f[0]?"sel":"")+'" data-act="usfiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>';
+  h+='<input type="search" id="usq" placeholder="Buscar por nombre" value="'+esc(US.q)+'" style="margin-top:8px">';
+  var q=normH(US.q), hay=false;
+  CIUDADES.concat([{co:"REG",nombre:REGIONAL.nombre}]).forEach(function(c){
+    var l=S.users.filter(function(u){ return u.co===c.co&&(US.f==="todos"||(US.f==="activos")===(u.activo!==false))&&(!q||normH(u.nombre+" "+(u.cargo||"")).indexOf(q)>=0); }).sort(function(a,b){ var o={administrador:0,coordinador:1,operario:2}; return (o[a.rol]-o[b.rol])||String(a.nombre).localeCompare(String(b.nombre)); });
+    if(!l.length) return; hay=true;
+    h+='<p class="grp-titulo">'+esc(c.nombre)+(c.co!=="REG"?' · C.O. '+c.co:'')+'</p>'+l.map(function(u){
+      var cl=u.rol==="administrador"?'<span class="chip">Clave propia</span>':US.claves==null?'':tieneClaveU(u)?'<span class="chip st-ok">Clave creada</span>':'<span class="chip st-nov">Sin clave</span>';
+      return '<div class="user-row" data-act="usabrir" data-id="'+esc(u.id)+'" style="'+(u.activo===false?'opacity:.55':'')+'"><div class="avatar">'+esc(iniciales(u.nombre))+'</div><div class="grow"><div class="nm">'+esc(u.nombre)+(u.id===S.me.id?' <small>(tú)</small>':'')+'</div><div class="rl">'+esc(ROL_LABEL[u.rol]||u.rol)+(u.cargo?' · '+esc(u.cargo):'')+'</div></div>'+(u.activo===false?'<span class="chip">Inactivo</span>':cl)+'</div>';
+    }).join("");
+  });
+  if(!hay) h+='<div class="empty">No hay usuarios con este filtro.</div>';
+  app(h); enlazarBuscador("usq",function(v){ US.q=v; });
+};
+ACT.usfiltro=function(el,d){ US.f=d("f"); render(); };
+ACT.usabrir=function(el,d){
+  var u=S.users.filter(function(x){ return x.id===d("id"); })[0]; if(!u) return; var yo=u.id===S.me.id, adm=u.rol==="administrador";
+  var bg=abrirSheet('<h3>'+esc(u.nombre)+'</h3><p class="small muted">'+esc(ROL_LABEL[u.rol]||u.rol)+' · '+esc(u.ciudad||"")+(u.activo===false?' · <b>inactivo</b>':'')+'</p>'+
+    '<button class="btn block" id="usEd">Editar datos</button><div class="sp"></div>'+
+    (adm?'':'<button class="btn block" id="usRs">Restablecer clave</button><div class="sp"></div>')+
+    '<button class="btn ghost block" id="usTg">'+(u.activo===false?"Activar usuario":"Desactivar usuario")+'</button><div class="sp"></div>'+
+    '<button class="btn red block" id="usDel">Eliminar usuario</button><div class="sp"></div><button class="btn ghost block" id="usX">Cerrar</button>');
+  $("#usX",bg).onclick=cerrarSheet;
+  $("#usEd",bg).onclick=function(){ cerrarSheet(); hojaEditarUsuario(u); };
+  if($("#usRs",bg)) $("#usRs",bg).onclick=function(){ cerrarSheet(); hojaRestablecer(u); };
+  $("#usTg",bg).onclick=async function(){
+    if(yo&&u.activo!==false){ toast("No puedes desactivar tu propio usuario"); return; }
+    try{ await DB.patch("usuarios",u.id,{activo:u.activo===false,actualizadoEn:ahora()}); await cargarUsuarios(); cerrarSheet(); toast(u.activo===false?"Usuario activado":"Usuario desactivado"); render(); }catch(e){ toast("No se pudo actualizar: "+(e.message||e)); }
+  };
+  $("#usDel",bg).onclick=async function(){
+    if(yo){ toast("No puedes eliminar tu propio usuario"); return; }
+    if(!confirm("¿Eliminar a "+u.nombre+"? Pierde el acceso a todas las apps. Lo que ya registró no se borra. Si solo quieres quitarle el acceso por un tiempo, mejor desactívalo.")) return;
+    try{ await DB.del("usuarios",u.id); await cargarUsuarios(); cerrarSheet(); toast("Usuario eliminado"); render(); }catch(e){ toast("No se pudo eliminar: "+(e.message||e)); }
+  };
+};
+function hojaEditarUsuario(u){
+  var bg=abrirSheet('<h3>Editar usuario</h3><label class="lb">Nombre completo</label><input id="euNom" type="text" value="'+esc(u.nombre)+'"><label class="lb">Cargo</label><input id="euCar" type="text" value="'+esc(u.cargo||"")+'">'+
+    '<label class="lb">Ciudad</label><select id="euCo">'+CIUDADES.map(function(c){ return '<option value="'+c.co+'"'+(u.co===c.co?" selected":"")+'>'+c.nombre+'</option>'; }).join("")+'<option value="REG"'+(u.co==="REG"?" selected":"")+'>'+esc(REGIONAL.nombre)+' (regional)</option></select>'+
+    '<label class="lb">Rol</label><select id="euRol"><option value="operario"'+(u.rol==="operario"?" selected":"")+'>Auxiliar de bodega</option><option value="coordinador"'+(u.rol==="coordinador"?" selected":"")+'>Coordinador / Supervisor</option><option value="administrador"'+(u.rol==="administrador"?" selected":"")+'>Administrador</option></select>'+
+    '<p class="small muted">Cambiar el nombre no cambia su identificación ni su clave.</p><div class="sp"></div><button class="btn gold block" id="euOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="euX">Cancelar</button>');
+  $("#euX",bg).onclick=cerrarSheet;
+  $("#euOk",bg).onclick=async function(){
+    var nom=($("#euNom",bg).value||"").trim(), co=$("#euCo",bg).value, rol=$("#euRol",bg).value; if(!nom){ toast("Escribe el nombre"); return; }
+    if(u.id===S.me.id&&rol!==u.rol){ toast("No puedes cambiar tu propio rol"); return; }
+    var c=ciudadPorCo(co);
+    try{ await DB.patch("usuarios",u.id,{nombre:nom,cargo:($("#euCar",bg).value||"").trim(),co:co,ciudad:c?c.nombre:REGIONAL.nombre,rol:rol,actualizadoEn:ahora()}); await cargarUsuarios(); cerrarSheet(); toast("Usuario actualizado"); render(); }
+    catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
+  };
+}
+/* Restablecer clave: el administrador confirma con su propia clave; la persona crea una nueva al entrar */
+function hojaRestablecer(u){
+  var bg=abrirSheet('<h3>Restablecer clave</h3><p class="small muted">Para restablecer la clave de <b>'+esc(u.nombre)+'</b>, escribe tu clave de administrador. Al ingresar, esa persona creará una nueva.</p><label class="lb">Tu clave de administrador</label><input id="rsClave" type="password" autocomplete="off"><div class="sp"></div><button class="btn gold block" id="rsOk">Restablecer</button><div class="sp"></div><button class="btn ghost block" id="rsX">Cancelar</button>');
+  var c=$("#rsClave",bg); setTimeout(function(){ c.focus(); },80);
+  $("#rsX",bg).onclick=cerrarSheet;
+  async function enviar(){
+    if(!c.value){ toast("Escribe tu clave"); return; }
+    try{
+      var ok=(await DB.rpc("restablecer_clave",{p_super:slugNombre(primerNombre(S.me.nombre)),p_clave:c.value,p_objetivo:u.id}))===true;
+      if(ok){ cerrarSheet(); toast("Clave de "+u.nombre+" restablecida. Creará una nueva al ingresar.",4500); cargarClaves(); }
+      else { c.value=""; toast("No se pudo: tu clave de administrador es incorrecta o este usuario no se puede restablecer.",4500); }
+    }catch(e){ toast("No se pudo restablecer: "+(e.message||e)); }
+  }
+  $("#rsOk",bg).onclick=enviar; c.onkeydown=function(e){ if(e.key==="Enter") enviar(); };
+}
 
 /* ===== 60_ops.js ===== */
 /* ---------- tareas: consultas livianas (sin la lista de referencias) ---------- */
@@ -1825,6 +1889,7 @@ function alEntrar(v){
     else if(v==="ali") cargarAli();
     else if(v==="desp") cargarDesp();
     else if(v==="matriz") abrirMatriz();
+    else if(v==="usuarios"){ cargarUsuarios().then(function(){ var c=cur(); if(c&&c.v==="usuarios") render(); }).catch(function(){}); cargarClaves(); }
     else if(v==="rutas") cargarBase(false).then(function(){ var c=cur(); if(c&&c.v==="rutas") render(); }).catch(function(){});
     else if(v==="ofertas"||v==="maestro") cargarBase(false).then(function(){ var c=cur(); if(c&&c.v===v) render(); }).catch(function(){});
   }catch(e){}
