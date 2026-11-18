@@ -1023,7 +1023,7 @@ VIEWS.ofertas=function(){
     if((OF.filtro==="sin"||OF.filtro==="virtual"||OF.filtro==="no")&&ofCatTxt(k)!==OF.filtro) return false;
     var q=normH(OF.q); return !q||normH(k+" "+ofDesc(k)).indexOf(q)>=0;
   });
-  h+='<p class="small muted">'+nf(lista.length)+' ofertas'+(lista.length>150?' (se muestran las primeras 150: usa el buscador)':'')+'</p><button class="btn ghost sm" data-act="ofexportar">Descargar esta lista (Excel)</button>';
+  h+='<p class="small muted">'+nf(lista.length)+' ofertas'+(lista.length>150?' (se muestran las primeras 150: usa el buscador)':'')+'</p><button class="btn ghost sm" data-act="ofexportar">Descargar esta lista (Excel)</button> <button class="btn ghost sm" data-act="ofexpsincomp">Descargar las que faltan componentes</button>';
   h+=lista.slice(0,150).map(function(k){
     var c=S.ofr[k], t=ofCatTxt(k);
     var ciu=CIUDADES.map(function(ci){ var d=desgloseDe(k,ci.co); return ci.nombre.slice(0,3).toUpperCase()+' '+(d.v===true?'✔':d.v===false?'✖':'·'); }).join(' · ');
@@ -1036,25 +1036,39 @@ VIEWS.ofertas=function(){
   var q=$("#ofq"); if(q){ q.oninput=function(){ OF.q=q.value; var pos=q.selectionStart; render(); var q2=$("#ofq"); if(q2){ q2.focus(); try{ q2.setSelectionRange(pos,pos); }catch(e){} } }; }
 };
 ACT.offiltro=function(el,d){ OF.filtro=d("f"); render(); };
-ACT.ofabrir=function(el,d){
-  var k=d("k"), c=S.cat[k]||{}, comp=S.ofr[k], cv=c.virtual===true?"1":c.virtual===false?"0":"";
+ACT.ofabrir=function(el,d){ hojaOferta(d("k")); };
+function ofFilaComp(r){
+  var m=S.mae[r.ref]||{};
+  return '<div class="ofRow" style="margin-bottom:6px"><div class="row"><input class="ofR grow" placeholder="Referencia del componente" value="'+esc(r.ref||"")+'" inputmode="text"><input class="ofQ" type="number" step="any" min="0" placeholder="Cant." value="'+esc(r.cant||"")+'" style="max-width:84px"><button class="btn ghost sm ofDel" type="button">✕</button></div><div class="small muted ofD">'+esc(r.ref?(m.d||r.desc||"(no está en el maestro)"):"")+'</div></div>';
+}
+function hojaOferta(k){
+  var c=S.cat[k]||{}, comp=S.ofr[k], cv=c.virtual===true?"1":c.virtual===false?"0":"", filas=(comp&&comp.comps||[]).slice();
   var bg=abrirSheet('<h3>'+esc(k)+'</h3><p class="small muted">'+esc(ofDesc(k))+'</p>'+
     '<label class="lb">Categoría (todas las ciudades)</label><select id="ofCat"><option value=""'+(cv===""?" selected":"")+'>Sin categorizar</option><option value="1"'+(cv==="1"?" selected":"")+'>Virtual: se desglosa en componentes</option><option value="0"'+(cv==="0"?" selected":"")+'>No virtual: se deja como producto</option></select>'+
+    '<label class="lb">Composición (qué trae la oferta)</label>'+(filas.length?'':'<div class="hint warn" id="ofSinC">Sin composición: agrega los componentes y su cantidad para poder desglosarla.</div>')+
+    '<div id="ofComps">'+filas.map(ofFilaComp).join("")+'</div><button class="btn ghost sm" type="button" id="ofAdd">+ Agregar componente</button>'+
     '<label class="lb">Excepción por ciudad</label>'+CIUDADES.map(function(ci){ var f=(S.desg[ci.co]||{})[k]; var vv=f===true?"SI":f===false?"NO":""; return '<div class="row" style="margin-bottom:6px"><span class="grow">'+esc(ci.nombre)+'</span><select class="ofCiu" data-co="'+ci.co+'"><option value=""'+(vv===""?" selected":"")+'>Según categoría</option><option value="SI"'+(vv==="SI"?" selected":"")+'>Desglosar</option><option value="NO"'+(vv==="NO"?" selected":"")+'>No desglosar</option></select></div>'; }).join("")+
-    '<label class="lb">Composición</label>'+(comp?'<div class="small">'+comp.comps.map(function(x){ return esc(x.ref)+' × '+esc(String(x.cant))+(x.desc?' · '+esc(x.desc):''); }).join('<br>')+'</div>':'<div class="hint warn">Sin composición cargada: no se puede desglosar hasta cargarla.</div>')+
     '<div class="sp"></div><button class="btn gold block" id="ofOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="ofX">Cancelar</button>');
+  var box=$("#ofComps",bg);
+  box.addEventListener("click",function(e){ if(e.target.classList.contains("ofDel")){ var r=e.target.closest(".ofRow"); if(r) r.remove(); } });
+  box.addEventListener("input",function(e){ if(e.target.classList.contains("ofR")){ var r=e.target.closest(".ofRow"), ref=e.target.value.trim(), m=S.mae[ref]||S.mae[ref.toUpperCase()]; r.querySelector(".ofD").textContent=ref?(m?m.d||"":"(no está en el maestro)"):""; } });
+  $("#ofAdd",bg).onclick=function(){ var t=document.createElement("div"); t.innerHTML=ofFilaComp({ref:"",cant:1}); box.appendChild(t.firstChild); var w=$("#ofSinC",bg); if(w) w.remove(); var ins=box.querySelectorAll(".ofR"); ins[ins.length-1].focus(); };
   $("#ofX",bg).onclick=cerrarSheet;
   $("#ofOk",bg).onclick=async function(){
-    var v=$("#ofCat",bg).value, virt=v===""?null:v==="1";
+    var v=$("#ofCat",bg).value, virt=v===""?null:v==="1", comps=[], malas=0;
+    $$(".ofRow",bg).forEach(function(r){ var ref=r.querySelector(".ofR").value.trim(), q=parseFloat(String(r.querySelector(".ofQ").value).replace(",",".")); if(!ref) return; if(!(q>0)){ malas++; return; } comps.push({ref:ref,desc:(S.mae[ref]&&S.mae[ref].d)||"",cant:q}); });
+    if(malas){ toast("Hay componentes sin cantidad: ponles la cantidad o quítalos"); return; }
     try{
       await DB.set("ofertas_cat",k,Object.assign({},c,{codigo:k,desc:ofDesc(k),virtual:virt,actualizadoEn:ahora(),actualizadoPor:S.me.id}));
+      var cambioComp=JSON.stringify(comps)!==JSON.stringify(((S.ofr[k]&&S.ofr[k].comps)||[]).map(function(x){ return {ref:x.ref,desc:x.desc||"",cant:x.cant}; }));
+      if(cambioComp&&(comps.length||S.ofr[k])) await DB.set("ofertas",k,{desc:ofDesc(k),comps:comps});
       var tareas=[]; $$(".ofCiu",bg).forEach(function(s){ var co=s.getAttribute("data-co"), id=co+"-"+k, prev=(S.desg[co]||{})[k];
         if(s.value===""){ if(prev!==undefined) tareas.push(DB.del("ofertas_desglose",id)); }
         else tareas.push(DB.set("ofertas_desglose",id,{co:co,oferta:k,desglosar:s.value==="SI",actualizadoEn:ahora()})); });
-      await Promise.all(tareas); await cargarBase(false); cerrarSheet(); toast("Oferta "+k+" actualizada"); render();
+      await Promise.all(tareas); await cargarBase(false); cerrarSheet(); toast("Oferta "+k+" guardada"+(virt===true&&!comps.length?" · falta la composición para desglosarla":"")); render();
     }catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
   };
-};
+}
 ACT.ofcomp=function(){
   elegirExcel(async function(wb){
     var t=tablaDe(wb,CLAVES_OF,"Ofertas"); if(!t){ toast("No se encontró la composición de ofertas (columnas Referencia, Referencia comp. y Cantidad Requerida)"); return; }
@@ -1383,11 +1397,18 @@ document.addEventListener("change",async function(e){
   var k=t.getAttribute("data-sw").toUpperCase(), on=t.checked, co=coActual(), m=(S.matriz[co]||{})[k]||{};
   try{
     await DB.set("ofertas_cat",k,Object.assign({},S.cat[k]||{},{codigo:k,desc:(S.cat[k]&&S.cat[k].desc)||m.descItem||(S.ofr[k]&&S.ofr[k].desc)||(S.mae[k]&&S.mae[k].d)||"",virtual:on,origen:(S.cat[k]&&S.cat[k].origen)||"matriz",actualizadoEn:ahora(),actualizadoPor:S.me.id}));
-    S.cat[k]=Object.assign({},S.cat[k]||{},{codigo:k,virtual:on});
+    S.cat[k]=Object.assign({},S.cat[k]||{},{codigo:k,virtual:on,desc:(S.cat[k]&&S.cat[k].desc)||m.descItem||(S.ofr[k]&&S.ofr[k].desc)||(S.mae[k]&&S.mae[k].d)||""});
     toast(on?(S.ofr[k]?"Oferta virtual: se desglosa en las próximas sesiones":"Oferta virtual marcada. Falta cargar su composición para desglosarla"):"Ya no es oferta virtual: se separa como producto",3500);
-    if(!$(".sheet-bg")) render();
+    if(!$(".sheet-bg")){ render(); if(on&&!S.ofr[k]) hojaOferta(k); }
   }catch(err){ t.checked=!on; toast("No se pudo guardar: "+(err.message||err)); }
 });
+
+/* Ofertas virtuales sin composicion: Excel en formato de composicion con la columna del componente vacia, para completarlo y volver a cargarlo */
+ACT.ofexpsincomp=function(){
+  var l=ofertasLista().filter(function(k){ var c=S.cat[k]; return !S.ofr[k]&&(!c||c.virtual!==false); });
+  if(!l.length){ toast("No hay ofertas pendientes de composición"); return; }
+  descargarXlsx("Ofertas_sin_composicion.xlsx","Ofertas",[["Referencia","Desc. Item","Referencia comp.","Desc. item comp.","Cantidad Requerida"]].concat(l.map(function(k){ return [k,ofDesc(k),"","",""]; })));
+};
 
 /* ===== 60_ops.js ===== */
 /* ---------- tareas: consultas livianas (sin la lista de referencias) ---------- */
