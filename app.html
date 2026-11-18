@@ -1518,7 +1518,7 @@ async function cargarAli(){
 }
 VIEWS.ali=function(){
   topbar("Alistamiento",subtituloUsuario(),true);
-  var h='<div class="row"><h1 class="grow" style="margin:6px 0">Alistamiento</h1><button class="btn gold sm" data-act="alnueva">+ Nueva sesión</button></div>';
+  var h=selectorCiudad("alco")+'<div class="row"><h1 class="grow" style="margin:6px 0">Alistamiento</h1><button class="btn gold sm" data-act="alnueva">+ Nueva sesión</button></div>';
   if(AL.err) h+='<div class="hint warn">'+esc(AL.err)+'</div>';
   if(!AL.sesiones.length) h+='<div class="empty">'+(AL.cargando?"Cargando sesiones…":"Aún no hay sesiones. Cree una cargando los Excel del día.")+'</div>';
   AL.sesiones.forEach(function(s){
@@ -1595,6 +1595,7 @@ ACT.nvcrear=async function(){
     if(N.rep.sin.length) docs.push(tareaDoc("alistamiento",sid,titulo,co,"",N.rep.sin));
     await DB.set("ops_sesiones",sid,{modulo:"alistamiento",co:co,ciudad:ciudad,titulo:titulo,fecha:hoy(),creadoPor:S.me.nombre,creadoPorId:S.me.id,creadoEn:ahora(),totalRefs:N.items.length,totalUnidades:N.unid,docs:N.docs,archivos:N.archivos.map(function(a){ return {n:a.n,t:a.t,l:a.l}; })});
     await DB.setMany("ops_tareas",docs);
+    if(esAdmin()&&S.coSel!==co){ S.coSel=co; LS.setRaw("ops_cosel",co); }
     var reg={maestro:0,completados:0,matriz:0}; try{ reg=await registrarPendientes(N.items,co); }catch(e){}
     toast("Sesión creada: "+docs.length+" tareas"+(reg.maestro||reg.matriz?" · "+(reg.maestro?reg.maestro+" productos nuevos al maestro":"")+(reg.maestro&&reg.matriz?" y ":"")+(reg.matriz?reg.matriz+" referencias nuevas a la matriz, pendientes de asignar":""):""),5000); NUEVA={};
     SESV={id:sid,cargando:true,err:"",ses:null,tareas:[]}; nav.pop(); go("ses"); cargarSes();
@@ -1714,7 +1715,7 @@ var DF={fecha:""};
 VIEWS.desp=function(){
   topbar("Despacho",subtituloUsuario(),true);
   var D=S.desp, mi=Object.keys(S.mae).length;
-  var h='<h1>Despacho</h1><div class="hint">El coordinador decide qué va en cada vehículo: la app recibe la <b>planilla</b> (placa + facturas), arma el listado consolidado de cada vehículo, lo envía al auxiliar de cargue (segundo alistamiento) y al final dice si se aprovechó la capacidad.</div>';
+  var h=selectorCiudad("dpco")+'<h1>Despacho</h1><div class="hint">El coordinador decide qué va en cada vehículo: la app recibe la <b>planilla</b> (placa + facturas), arma el listado consolidado de cada vehículo, lo envía al auxiliar de cargue (segundo alistamiento) y al final dice si se aprovechó la capacidad.</div>';
   h+='<div class="card gold"><b>1. Planilla de despacho</b><p class="small muted">Excel con Número, Fecha, Número factura, Vehículo (y Estado). Se descarta todo lo demás.</p><div class="row"><span class="chip ok">'+nf(D.planillas.length)+' planillas</span></div><div class="sp"></div><button class="btn block" data-act="cargapla">Cargar planilla (Excel)</button></div>';
   h+='<div class="card gold"><b>2. Líneas de las facturas</b><p class="small muted">Excel(s) con Nro documento, Referencia, Descripción, Código de barras, Factor U.M. y Cantidad. Puede elegir varios archivos a la vez.</p><div class="row"><span class="chip ok">'+nf(Object.keys(D.lineas).length)+' facturas con líneas</span></div>'+D.archivos.map(function(a){ return '<div class="small muted" style="margin-top:6px">• '+esc(a.n)+' — '+a.f+' facturas</div>'; }).join("")+'<div class="sp"></div><button class="btn block" data-act="cargafac">Cargar facturas (Excel)</button></div>';
   if(!mi) h+='<div class="hint warn">Sin maestro: el peso y volumen no se calcularán. Cárguelo en Administración → Maestro de productos.</div>';
@@ -1809,6 +1810,14 @@ ACT.cargafac=function(){
     LS.set("ops_desp",S.desp); toast(tot+" facturas cargadas"+(lista.length>1?" de "+nArch+" archivos":"")+(dupT?" · "+dupT+" repetidas omitidas":"")+(err.length?" · con problemas: "+err.join(", "):""),4500); render();
   });
 };
+
+/* Selector de ciudad (solo administrador) para las pantallas de seguimiento */
+function selectorCiudad(act){
+  if(!esAdmin()) return "";
+  return '<div class="seg" style="margin-bottom:6px">'+CIUDADES.map(function(c){ return '<span class="chip btn2 '+(coActual()===c.co?"sel":"")+'" data-act="'+act+'" data-co="'+c.co+'">'+c.nombre+'</span>'; }).join("")+'</div>';
+}
+ACT.alco=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); S.matriz={}; AL.sesiones=[]; AL.tareas=[]; AL.cargando=true; render(); cargarAli(); };
+ACT.dpco=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); S.matriz={}; render(); cargarDesp(); };
 
 /* ===== 65_listado.js ===== */
 /* ---------- rutas por poblacion y listado de separacion impreso (para bodegas sin RF ni matriz formal) ---------- */
