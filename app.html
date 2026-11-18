@@ -383,7 +383,9 @@ function esOferta(ref,desc){
   for(var co in S.desg){ if(S.desg[co][r]!==undefined) return true; }
   return /^OF[\s.\d]/i.test(String(desc||"").trim());
 }
-var A_PLA={num:["numero"],fecha:["fecha"],fac:["numero factura"],veh:["vehiculo"],est:["estado"]};
+var A_PLA={num:["numero"],fecha:["fecha"],fac:["numero factura"],veh:["vehiculo"],est:["estado"],notas:["notas"]};
+/* Vehiculo esporadico: en la planilla va con placa "000" y la placa real se escribe en Notas */
+function placaDeNotas(txt){ var m=/(?:^|[^A-Z0-9])([A-Z]{3})[\s\-]?(\d{3}|\d{2}[A-Z])(?![A-Z0-9])/.exec(String(txt||"").toUpperCase().replace(/_/g," ")); return m?(m[1]+m[2]):""; }
 var A_MTZ={ref:["referencia"],desc:["descripcion","desc. item","descripcion item"],zona:["zona","piso"],seq:["secuencia"],flag:["desglosar_oferta","desglosar oferta","desglosar"],ubic:["ubicacion"],aux:["auxiliar","operario","alistador"]};
 
 /* Tipo de documento segun las columnas (y, si hace falta, el prefijo del numero) */
@@ -1722,7 +1724,7 @@ VIEWS.placa=function(){
   var cal=planillasCalc()[PL.i]; if(!cal){ back(); return; }
   var pl=cal.pl, c=cal.c, v=cal.v, cap=cal.cap, tk=DP.tareas["D"+pl.num];
   topbar(pl.placa+" · planilla "+pl.num,pl.fecha,true);
-  var h='<div class="card gold"><div class="row"><b class="grow">Uso de capacidad</b><span class="chip '+v.cls+'">'+v.t+(v.u!=null?" "+pct(v.u):"")+'</span></div>';
+  var h=(pl.sinPlaca?'<div class="hint warn">Vehículo esporádico (placa 000) sin placa en Notas. Escríbela para evaluar la capacidad.</div>':pl.esporadico?'<div class="hint">Vehículo esporádico: placa tomada de Notas.</div>':'')+((pl.sinPlaca||pl.esporadico)?'<button class="btn ghost sm" data-act="placambiar">'+(pl.sinPlaca?'Escribir la placa':'Cambiar la placa')+'</button><div class="sp"></div>':'')+'<div class="card gold"><div class="row"><b class="grow">Uso de capacidad</b><span class="chip '+v.cls+'">'+v.t+(v.u!=null?" "+pct(v.u):"")+'</span></div>';
   if(cap&&(cap.kg>0||cap.m3>0)){
     if(cap.kg>0) h+='<div class="small" style="margin-top:8px">Peso: <b>'+nf(c.kg)+' kg</b> de '+nf(cap.kg)+' kg ('+pct(c.kg/cap.kg)+')</div><div class="bar" style="margin-top:4px"><i style="width:'+Math.min(100,Math.round(c.kg/cap.kg*100))+'%"></i></div>';
     if(cap.m3>0) h+='<div class="small" style="margin-top:8px">Volumen: <b>'+nf(c.m3,1)+' m³</b> de '+nf(cap.m3,1)+' m³ ('+pct(c.m3/cap.m3)+')</div><div class="bar" style="margin-top:4px"><i style="width:'+Math.min(100,Math.round(c.m3/cap.m3*100))+'%"></i></div>';
@@ -1736,6 +1738,12 @@ VIEWS.placa=function(){
   else { var ops=usuariosDe(coActual(),"operario"); h+='<div class="card"><label class="lb" style="margin-top:0">Auxiliar de cargue</label><div class="row"><select id="cgsel" class="grow"><option value="">— Elegir auxiliar —</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">'+esc(u.nombre)+'</option>'; }).join("")+'</select><button class="btn gold sm" data-act="enviarcargue">Enviar a cargue</button></div><p class="small muted">Le aparece en "Mis tareas" y usted ve su avance aquí y en el tablero.</p></div>'; }
   h+='<h2>Listado consolidado</h2>'+cal.items.map(function(it){ return '<div class="line" style="cursor:default"><div style="min-width:0"><div class="r">'+esc(it.ref)+'</div><div class="d">'+esc(it.desc)+'</div><div class="row"><span class="chip info">'+esc(it.grupo)+'</span><span class="chip info">'+esc(it.linea)+'</span></div></div><div class="q">'+esc(fmtQty(it.total,it.ue))+'</div></div>'; }).join("");
   app(h);
+};
+ACT.placambiar=function(){
+  var cal=planillasCalc()[PL.i]; if(!cal) return; var pl=cal.pl;
+  var bg=abrirSheet('<h3>Placa del vehículo</h3><p class="small muted">Planilla '+esc(pl.num)+'. Para un vehículo esporádico la placa real se escribe en Notas; aquí puedes corregirla.</p><label class="lb">Placa (3 letras + 3 números)</label><input id="plP" type="text" maxlength="7" autocapitalize="characters" value="'+esc(plateOk(pl.placa)?pl.placa:"")+'"><div class="sp"></div><button class="btn gold block" id="plOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="plX">Cancelar</button>');
+  $("#plX",bg).onclick=cerrarSheet;
+  $("#plOk",bg).onclick=function(){ var p=($("#plP",bg).value||"").toUpperCase().replace(/[\s-]/g,""); if(!plateOk(p)){ toast("Formato de placa: 3 letras y 3 números"); return; } pl.placa=p; pl.sinPlaca=false; pl.esporadico=true; LS.set("ops_desp",S.desp); cerrarSheet(); render(); };
 };
 ACT.abrirpl=function(el,d){ PL.i=+d("i"); go("placa"); };
 ACT.dfecha=function(el,d){ DF.fecha=d("f"); render(); };
@@ -1756,9 +1764,13 @@ ACT.cargapla=function(){
       var num=String(r[m.num]||"").trim(), fac=String(r[m.fac]||"").trim(); if(!num||!fac) return;
       if(m.est>=0&&normH(r[m.est])==="anulado"){ anul++; return; }
       var f=r[m.fecha], fecha=typeof f==="number"?new Date(Math.round((f-25569)*86400000)).toISOString().slice(0,10):String(f||"").slice(0,10);
-      var placa=String(r[m.veh]||"").trim().toUpperCase().replace(/\s+/g," "); if(/^\d+$/.test(placa)||!placa) placa="SIN VEHÍCULO";
-      var pl=mp[num]; if(!pl){ pl=mp[num]={num:num,fecha:fecha,placa:placa,facs:[]}; orden.push(num); } if(pl.facs.indexOf(fac)<0) pl.facs.push(fac);
+      var placa=String(r[m.veh]||"").trim().toUpperCase().replace(/\s+/g," "), esp=/^0+$/.test(placa), nota=m.notas>=0?String(r[m.notas]||"").trim():"";
+      if(!placa||(/^\d+$/.test(placa)&&!esp)) placa="SIN VEHÍCULO";
+      var pl=mp[num]; if(!pl){ pl=mp[num]={num:num,fecha:fecha,placa:placa,facs:[],esp:esp,notas:""}; orden.push(num); }
+      if(esp&&nota&&pl.notas.indexOf(nota)<0) pl.notas+=(pl.notas?" ":"")+nota;
+      if(pl.facs.indexOf(fac)<0) pl.facs.push(fac);
     });
+    orden.forEach(function(k){ var pl=mp[k]; if(!pl.esp) return; var pp=placaDeNotas(pl.notas); if(pp){ pl.placaNota=pp; pl.placa=pp; pl.esporadico=true; } else { pl.placa="000"; pl.sinPlaca=true; } pl.notas=""; delete pl.esp; });
     S.desp.planillas=orden.map(function(k){ return mp[k]; }).sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:(+x.num)-(+y.num); });
     LS.set("ops_desp",S.desp); toast(S.desp.planillas.length+" planillas"+(anul?" ("+anul+" anuladas omitidas)":"")); render();
   });
