@@ -1534,31 +1534,13 @@ VIEWS.ali=function(){
 ACT.alnueva=function(){ NUEVA={}; go("nueva"); };
 ACT.abrirses=function(el,d){ SESV={id:d("id"),cargando:true,err:"",ses:null,tareas:[]}; go("ses"); cargarSes(); };
 
-/* ---- nueva sesion: sin filtros; la matriz reparte, la base de ofertas decide el desglose ---- */
+/* ---- nueva sesion: al cargar los archivos la sesion se crea sola (una por centro de operacion); los cambios se hacen despues sobre la sesion ---- */
 var NUEVA={};
 VIEWS.nueva=function(){
   topbar("Nueva sesión",subtituloUsuario(),true);
-  var h='<h1>Nueva sesión</h1><div class="card gold"><b>Archivos de facturas, pedidos, requisiciones o remisiones</b><p class="small muted">Cargue todos los archivos del día, sin filtrar: la app reconoce el tipo de cada uno, descarta los datos de clientes, desglosa las ofertas según la base y reparte cada referencia a su auxiliar según la matriz. Puede elegir varios a la vez.</p><button class="btn block" data-act="nvarchivos">Elegir Excel (uno o varios)</button></div>';
-  if(NUEVA.ok){
-    var N=NUEVA;
-    h+='<div class="hint"><b>'+N.archivos.length+(N.archivos.length>1?' archivos cargados':' archivo cargado')+'</b>'+N.archivos.map(function(a){ return '<br>• '+esc(a.n)+' — <b>'+(NOMBRE_TIPO[a.t]||a.t)+'</b> · '+nf(a.l)+' líneas · '+nf(a.d)+' documentos'; }).join("")+(N.omitidos?'<br><b>'+N.omitidos+' documentos repetidos</b> entre archivos: se contaron una sola vez.':'')+'</div>';
-    if(N.errores.length) h+='<div class="hint warn" style="margin-top:8px"><b>No se pudieron usar:</b><br>'+N.errores.map(function(e){ return '• '+esc(e); }).join("<br>")+'</div>';
-    if(N.iguales) h+='<div class="hint" style="margin-top:8px">Las requisiciones y las remisiones traen las mismas cantidades: la remisión es el resultado de la requisición. Se usó la remisión para no contar doble.</div>';
-    if(esAdmin()) h+='<label class="lb">Centro de operación</label><div class="seg">'+CIUDADES.map(function(c){ return '<span class="chip btn2 '+(N.co===c.co?"sel":"")+'" data-act="nvco" data-co="'+c.co+'">'+c.nombre+'</span>'; }).join("")+'</div>';
-    h+='<div class="kpis" style="margin-top:10px"><div class="kpi"><b>'+nf(N.items.length)+'</b><span>Referencias</span></div><div class="kpi"><b>'+nf(N.unid)+'</b><span>Unidades</span></div><div class="kpi"><b>'+nf(N.docs)+'</b><span>Documentos</span></div></div>';
-    h+='<div class="card gold"><b>Listado de separación (para imprimir)</b><p class="small muted">Genera el listado en hoja horizontal por ruta y por piso o auxiliar, con cajas, unidades sueltas, peso, volumen y vehículo sugerido. No necesita matriz ni sesión.</p><button class="btn block" data-act="nvlistado">Ver e imprimir listado</button></div>';
-    if(N.des.nOF||N.des.dejadas) h+='<p class="small muted">Ofertas: '+N.des.nOF+' desglosadas en '+N.des.nComp+' líneas'+(N.des.dejadas?' · '+N.des.dejadas+' se dejan como producto armado':'')+'.</p>';
-    var sin=Object.keys(N.des.sin); if(sin.length) h+='<div class="hint warn" style="margin-top:8px">Ofertas que deben desglosarse pero no tienen composición (quedan como producto): <b>'+sin.length+'</b> — '+esc(sin.slice(0,6).join(", "))+(sin.length>6?"…":"")+'. Cargue su composición en Administración → Ofertas.</div>';
-    if(N.ofNuevas) h+='<div class="hint" style="margin-top:8px"><b>'+N.ofNuevas+' oferta'+(N.ofNuevas>1?'s nuevas detectadas':' nueva detectada')+'</b> en estos archivos: quedaron registradas en Administración → Ofertas para que las categorices como virtual o no. Mientras tanto se desglosan solo las de facturas y pedidos que tengan composición.</div>';
-    if(!N.rep) h+='<div class="empty">Calculando el reparto…</div>';
-    else {
-      var aux=Object.keys(N.rep.por);
-      h+='<h2>Reparto según la matriz</h2>'+aux.sort(function(a,b){ return N.rep.por[b].length-N.rep.por[a].length; }).map(function(a){ var its=N.rep.por[a], u=its.reduce(function(s,x){ return s+x.total; },0); return '<div class="card"><div class="who"><div class="avatar">'+esc(iniciales(nombreDe(a)))+'</div><div class="grow"><b>'+esc(nombreDe(a))+'</b><div class="small muted">'+nf(u)+' unidades</div></div><b class="mono">'+its.length+' refs</b></div></div>'; }).join("");
-      if(N.rep.sin.length) h+='<div class="hint warn"><b>'+N.rep.sin.length+' referencias sin auxiliar</b> en la matriz de este C.O. Quedarán como "Sin asignar" para que el coordinador las reparta.</div>';
-      if(!aux.length) h+='<div class="hint warn">Este C.O. no tiene matriz cargada: todo quedará sin asignar. Cárguela en Administración → Matriz de asignación.</div>';
-      h+='<label class="lb">Nombre de la sesión</label><input type="text" id="nvtit" value="'+esc(N.titulo)+'"><div class="sp"></div><button class="btn gold block" data-act="nvcrear" '+(N.creando?'disabled':'')+'>'+(N.creando?'Creando…':'Crear sesión y asignar tareas')+'</button>';
-    }
-  }
+  var h='<h1>Nueva sesión</h1><div class="card gold"><b>Archivos de facturas, pedidos, requisiciones o remisiones</b><p class="small muted">Cargue todos los archivos del día, sin filtrar. La app reconoce el tipo de cada uno, descarta los datos de clientes, desglosa las ofertas según la base y <b>crea la sesión de inmediato</b>, repartida según la matriz. Si el archivo trae varias ciudades, crea una sesión por cada una. Después puede ajustar lo que haga falta dentro de la sesión e imprimir el listado de separación.</p><button class="btn block" data-act="nvarchivos" '+(NUEVA.creando?'disabled':'')+'>'+(NUEVA.creando?'Creando…':'Elegir Excel (uno o varios)')+'</button></div>';
+  if(NUEVA.creando) h+='<div class="empty">'+esc(NUEVA.msg||"Creando la sesión…")+'</div>';
+  if(NUEVA.errores&&NUEVA.errores.length) h+='<div class="hint warn" style="margin-top:8px"><b>No se pudieron usar:</b><br>'+NUEVA.errores.map(function(e){ return '• '+esc(e); }).join("<br>")+'</div>';
   app(h);
 };
 ACT.nvarchivos=function(){
@@ -1573,36 +1555,53 @@ ACT.nvarchivos=function(){
       Object.keys(propios).forEach(function(dc){ vistos[dc]=1; });
       omit+=nRep; detalle.push({n:it.f.name,l:aport,d:Object.keys(propios).length-nRep,t:r.tipo});
     });
-    if(!todas.length){ toast(err[0]||"No hay líneas para cargar"); return; }
-    var co=esAdmin()?(coDeBodega((todas.filter(function(l){ return l.bod; })[0]||{}).bod)||S.coSel):S.me.co;
-    NUEVA={ok:true,raw:todas,archivos:detalle,omitidos:omit,errores:err,tipos:resumenTipos(todas),iguales:mismosProductos(todas),co:co,titulo:"Alistamiento "+hoy(),rep:null};
-    cargarBase(false,co).catch(function(){}).then(function(){ return registrarCiudades(todas).catch(function(){}).then(function(){ return registrarOfertas(todas,"listado",co).catch(function(){ return 0; }); }); }).then(function(nuevas){ NUEVA.ofNuevas=nuevas||0; armarNuevaAli(); render(); repartirNueva(); });
+    if(!todas.length){ NUEVA={errores:err}; render(); toast(err[0]||"No hay líneas para cargar"); return; }
+    crearSesiones(todas,detalle,omit,err);
   });
 };
-function armarNuevaAli(){
-  var N=NUEVA; var lineas=N.raw.filter(function(l){ return !(N.iguales&&l.t==="REQ"); });
-  var des=desglosar(lineas,N.co), dd={}, un=0; lineas.forEach(function(l){ if(l.doc) dd[l.doc]=1; });
-  N.des=des; N.items=consolidar(des.lineas); N.docs=Object.keys(dd).length; N.unid=N.items.reduce(function(s,x){ return s+x.total; },0);
-}
-async function repartirNueva(){
-  var N=NUEVA; try{ var M=await cargarMatriz(N.co); N.rep=repartirPorMatriz(N.items,M,N.co); }catch(e){ toast("No se pudo leer la matriz: "+(e.message||e)); N.rep={por:{},sin:N.items.slice()}; }
-  var c=cur(); if(c&&c.v==="nueva") render();
-}
-ACT.nvco=async function(el,d){ NUEVA.co=d("co"); NUEVA.rep=null; await cargarBase(false,NUEVA.co).catch(function(){}); armarNuevaAli(); render(); repartirNueva(); };
-ACT.nvcrear=async function(){
-  var N=NUEVA; if(!N.rep||N.creando) return; N.creando=true; render();
+/* Una sesion por centro de operacion: cada linea se asigna por el prefijo de su bodega (06 Pereira, 07 Armenia…) */
+async function crearSesiones(todas,detalle,omit,err){
+  NUEVA={creando:true,msg:"Leyendo "+nf(todas.length)+" líneas…",errores:err}; render();
   try{
-    var titulo=(($("#nvtit")||{}).value||"").trim()||N.titulo, sid="S"+hoy().slice(2).replace(/-/g,"")+"-"+rid(3), co=N.co, ciudad=(ciudadPorCo(co)||{nombre:co}).nombre;
-    var docs=Object.keys(N.rep.por).map(function(a){ return tareaDoc("alistamiento",sid,titulo,co,a,N.rep.por[a]); });
-    if(N.rep.sin.length) docs.push(tareaDoc("alistamiento",sid,titulo,co,"",N.rep.sin));
-    await DB.set("ops_sesiones",sid,{modulo:"alistamiento",co:co,ciudad:ciudad,titulo:titulo,fecha:hoy(),creadoPor:S.me.nombre,creadoPorId:S.me.id,creadoEn:ahora(),totalRefs:N.items.length,totalUnidades:N.unid,docs:N.docs,archivos:N.archivos.map(function(a){ return {n:a.n,t:a.t,l:a.l}; })});
-    await DB.setMany("ops_tareas",docs);
-    if(esAdmin()&&S.coSel!==co){ S.coSel=co; LS.setRaw("ops_cosel",co); }
-    var reg={maestro:0,completados:0,matriz:0}; try{ reg=await registrarPendientes(N.items,co); }catch(e){}
-    toast("Sesión creada: "+docs.length+" tareas"+(reg.maestro||reg.matriz?" · "+(reg.maestro?reg.maestro+" productos nuevos al maestro":"")+(reg.maestro&&reg.matriz?" y ":"")+(reg.matriz?reg.matriz+" referencias nuevas a la matriz, pendientes de asignar":""):""),5000); NUEVA={};
-    SESV={id:sid,cargando:true,err:"",ses:null,tareas:[]}; nav.pop(); go("ses"); cargarSes();
-  }catch(e){ N.creando=false; toast("No se pudo crear la sesión: "+(e.message||e),4500); render(); }
-};
+    var defecto=esAdmin()?S.coSel:S.me.co, porCo={}, fuera=0;
+    todas.forEach(function(l){ var c=coDeBodega(l.bod)||defecto; if(!esAdmin()&&c!==S.me.co){ fuera++; return; } (porCo[c]=porCo[c]||[]).push(l); });
+    var cos=Object.keys(porCo); if(!cos.length){ NUEVA={errores:err.concat(["Ninguna línea corresponde a tu centro de operación."])}; render(); return; }
+    var creadas=[];
+    for(var i=0;i<cos.length;i++){
+      var co=cos[i], cn=(ciudadPorCo(co)||{nombre:co}).nombre;
+      NUEVA.msg="Creando la sesión de "+cn+"…"; render();
+      await cargarBase(false,co).catch(function(){});
+      await registrarCiudades(porCo[co]).catch(function(){});
+      await registrarOfertas(porCo[co],"listado",co).catch(function(){ return 0; });
+      var r=await crearSesionDe(armarSesion(porCo[co],co,mismosProductos(porCo[co])),detalle);
+      creadas.push(r);
+    }
+    var ofn=creadas.reduce(function(s,x){ return s+(x.reg&&x.reg.matriz||0); },0), pm=creadas.reduce(function(s,x){ return s+(x.reg&&x.reg.maestro||0); },0);
+    if(esAdmin()){ S.coSel=creadas[0].co; LS.setRaw("ops_cosel",S.coSel); S.matriz={}; }
+    NUEVA={};
+    toast((creadas.length>1?creadas.length+" sesiones creadas (una por ciudad)":"Sesión creada")+(omit?" · "+omit+" documentos repetidos contados una vez":"")+(fuera?" · "+nf(fuera)+" líneas de otras ciudades omitidas":"")+(pm?" · "+pm+" productos nuevos al maestro":"")+(ofn?" · "+ofn+" referencias nuevas pendientes de asignar":""),6000);
+    nav.pop();
+    if(creadas.length===1){ SESV={id:creadas[0].sid,cargando:true,err:"",ses:null,tareas:[]}; go("ses"); cargarSes(); }
+    else { go("ali"); cargarAli(); }
+  }catch(e){ NUEVA={errores:err.concat(["No se pudo crear la sesión: "+(e.message||e)])}; render(); toast("No se pudo crear la sesión: "+(e.message||e),4500); }
+}
+function armarSesion(raw,co,iguales){
+  var lineas=raw.filter(function(l){ return !(iguales&&l.t==="REQ"); }), des=desglosar(lineas,co), dd={}; lineas.forEach(function(l){ if(l.doc) dd[l.doc]=1; });
+  var items=consolidar(des.lineas), g={}, ciu={};
+  lineas.forEach(function(l){ var k=l.ciu||"SIN CIUDAD"; (g[k]=g[k]||[]).push(l); });
+  Object.keys(g).forEach(function(k){ ciu[k]=consolidar(desglosar(g[k],co).lineas).map(function(x){ return [x.ref,x.total]; }); });
+  return {co:co,des:des,items:items,docs:Object.keys(dd).length,unid:items.reduce(function(s,x){ return s+x.total; },0),ciu:ciu,bod:(lineas.filter(function(l){ return l.bod; })[0]||{}).bod||""};
+}
+async function crearSesionDe(N,detalle){
+  var M=await cargarMatriz(N.co), rep=repartirPorMatriz(N.items,M,N.co), co=N.co, ciudad=(ciudadPorCo(co)||{nombre:co}).nombre;
+  var titulo="Alistamiento "+ciudad+" "+hoy(), sid="S"+hoy().slice(2).replace(/-/g,"")+"-"+rid(3);
+  var docs=Object.keys(rep.por).map(function(a){ return tareaDoc("alistamiento",sid,titulo,co,a,rep.por[a]); });
+  if(rep.sin.length) docs.push(tareaDoc("alistamiento",sid,titulo,co,"",rep.sin));
+  await DB.set("ops_sesiones",sid,{modulo:"alistamiento",co:co,ciudad:ciudad,titulo:titulo,fecha:hoy(),creadoPor:S.me.nombre,creadoPorId:S.me.id,creadoEn:ahora(),totalRefs:N.items.length,totalUnidades:N.unid,docs:N.docs,bod:N.bod,ciu:N.ciu,archivos:detalle.map(function(a){ return {n:a.n,t:a.t,l:a.l}; })});
+  await DB.setMany("ops_tareas",docs);
+  var reg={maestro:0,completados:0,matriz:0}; try{ reg=await registrarPendientes(N.items,co); }catch(e){}
+  return {sid:sid,co:co,docs:docs.length,reg:reg};
+}
 
 /* ---- detalle de una sesion: avance por auxiliar y reparto de lo que quedo sin asignar ---- */
 var SESV={id:"",cargando:false,err:"",ses:null,tareas:[]};
@@ -1618,6 +1617,7 @@ VIEWS.ses=function(){
   var tot=0,hec=0; SESV.tareas.forEach(function(t){ tot+=t.datos.total; hec+=t.datos.ok+t.datos.parc+t.datos.no; });
   var h='<div class="kpis"><div class="kpi"><b>'+nf(s.totalRefs)+'</b><span>Referencias</span></div><div class="kpi"><b>'+nf(s.totalUnidades)+'</b><span>Unidades</span></div><div class="kpi"><b>'+(tot?pct(hec/tot):"0%")+'</b><span>Avance</span></div></div>'+barra(tot?hec/tot:0,true);
   if(SESV.err) h+='<div class="hint warn" style="margin-top:8px">'+esc(SESV.err)+'</div>';
+  h+='<div class="row" style="margin-top:10px"><button class="btn grow" data-act="seslistado">Imprimir listado de separación</button><button class="btn ghost" data-act="sesrenombrar">Renombrar</button></div>';
   var sin=SESV.tareas.filter(function(t){ return !t.datos.asignadoId; })[0];
   if(sin){
     var ops=usuariosDe(s.co,"operario");
@@ -1821,6 +1821,12 @@ function selectorCiudad(act){
 ACT.alco=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); S.matriz={}; AL.sesiones=[]; AL.tareas=[]; AL.cargando=true; render(); cargarAli(); };
 ACT.dpco=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); S.matriz={}; render(); cargarDesp(); };
 
+ACT.sesrenombrar=async function(){
+  var s=SESV.ses; if(!s) return; var n=prompt("Nombre de la sesión",s.titulo); if(n===null) return; n=n.trim(); if(!n) return;
+  try{ await DB.patch("ops_sesiones",SESV.id,{titulo:n}); await Promise.all(SESV.tareas.map(function(t){ return DB.patch("ops_tareas",t.id,{titulo:n}); })); toast("Sesión renombrada"); cargarSes(); }
+  catch(e){ toast("No se pudo renombrar: "+(e.message||e)); }
+};
+
 /* ===== 65_listado.js ===== */
 /* ---------- rutas por poblacion y listado de separacion impreso (para bodegas sin RF ni matriz formal) ---------- */
 function claveCiu(c){ return normH(c).replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); }
@@ -1871,18 +1877,21 @@ ACT.rtcargar=function(){
 };
 
 /* ===== Listado de separacion (se imprime en horizontal) ===== */
-var LST={ruta:"",piso:""};
+var LST={ruta:"",piso:""}, LSD={ses:null,tareas:[],M:{}};
 function sugerirVehiculo(kg,m3){
   if(kg<=3000&&m3<=18) return "Turbo"; if(kg<=8000&&m3<=35) return "Sencillo"; if(kg<=17000&&m3<=50) return "Doble Troque";
   return "Supera Doble Troque (validar vehículo mayor)";
 }
-function listadoBase(N){ return N.raw.filter(function(l){ return !(N.iguales&&l.t==="REQ"); }); }
-function listadoCalc(N){
-  var lineas=listadoBase(N); if(LST.ruta) lineas=lineas.filter(function(l){ return rutaDe(l.ciu)===LST.ruta; });
-  var des=desglosar(lineas,N.co), items=consolidar(des.lineas), M=S.matriz[N.co]||{};
-  if(LST.piso) items=items.filter(function(it){ var a=(M[it.ref]||{}).auxiliarId||""; return LST.piso==="__sin"?!a:a===LST.piso; });
-  var conSeq=items.some(function(it){ return (M[it.ref]||{}).secuencia>0; });
-  items.sort(function(a,b){ if(conSeq){ var x=(M[a.ref]||{}).secuencia||1e9, y=(M[b.ref]||{}).secuencia||1e9; if(x!==y) return x-y; } return ordenRef(a.ref,b.ref); });
+/* El listado sale de la sesion ya creada: las tareas (con su auxiliar), el desglose por poblacion y la matriz vigente */
+function listadoCalc(){
+  var ses=LSD.ses||{}, M=LSD.M||{}, ciu=ses.ciu||{}, items=[], porRuta=null;
+  if(LST.ruta){ porRuta={}; Object.keys(ciu).forEach(function(c){ if(rutaDe(c)!==LST.ruta) return; ciu[c].forEach(function(a){ porRuta[a[0]]=(porRuta[a[0]]||0)+a[1]; }); }); }
+  LSD.tareas.forEach(function(t){ var aux=t.datos.asignadoId||""; (t.datos.items||[]).forEach(function(a){
+    var tot=a[4]; if(porRuta){ tot=porRuta[a[0]]||0; if(!(tot>0)) return; }
+    items.push({ref:a[0],desc:a[1],bar:a[2],ue:a[3],total:tot,seq:(M[a[0]]&&M[a[0]].secuencia)||a[8]||0,aux:aux,bod:ses.bod||""}); }); });
+  if(LST.piso) items=items.filter(function(it){ return LST.piso==="__sin"?!it.aux:it.aux===LST.piso; });
+  var conSeq=items.some(function(it){ return it.seq>0; });
+  items.sort(function(a,b){ if(conSeq){ var x=a.seq||1e9, y=b.seq||1e9; if(x!==y) return x-y; } return ordenRef(a.ref,b.ref); });
   var t={cajas:0,sueltas:0,kg:0,m3:0,sin:[],unid:0};
   items.forEach(function(it){
     var ue=it.ue>1?it.ue:1, c=ue>1?Math.floor(it.total/ue):0, s=it.total-c*ue; it._c=c; it._s=s; t.cajas+=c; t.sueltas+=s; t.unid+=it.total;
@@ -1890,31 +1899,37 @@ function listadoCalc(N){
   });
   return {items:items,t:t,M:M,conUbic:items.some(function(it){ return (M[it.ref]||{}).ubicacion; })};
 }
-ACT.nvlistado=async function(){ LST={ruta:"",piso:""}; try{ await cargarMatriz(NUEVA.co); }catch(e){} go("listado"); };
+ACT.seslistado=async function(){
+  try{
+    toast("Preparando el listado…",2500);
+    var rows=await DB.list("ops_tareas",{filter:{"datos->>sid":"eq."+SESV.id},all:true}), M={};
+    try{ M=await cargarMatriz(SESV.ses.co); }catch(e){}
+    LSD={ses:SESV.ses,tareas:rows.map(function(r){ return {id:r.id,datos:r.datos}; }),M:M}; LST={ruta:"",piso:""}; go("listado");
+  }catch(e){ toast("No se pudo preparar el listado: "+(e.message||e)); }
+};
 ACT.lsruta=function(el,d){ LST.ruta=d("v"); render(); };
 ACT.lspiso=function(el,d){ LST.piso=d("v"); render(); };
 ACT.lsimprimir=function(){ window.print(); };
 VIEWS.listado=function(){
-  var N=NUEVA; topbar("Listado de separación",subtituloUsuario(),true);
-  if(!N||!N.ok){ app('<div class="empty">Carga primero los archivos de la sesión.</div>'); return; }
-  var rutas={}; listadoBase(N).forEach(function(l){ var r=rutaDe(l.ciu); rutas[r]=(rutas[r]||0)+1; });
-  var M0=S.matriz[N.co]||{}, auxs={}; Object.keys(M0).forEach(function(k){ if(M0[k].auxiliarId) auxs[M0[k].auxiliarId]=1; });
+  var ses=LSD.ses; topbar("Listado de separación",subtituloUsuario(),true);
+  if(!ses){ app('<div class="empty">Abre una sesión y elige «Imprimir listado de separación».</div>'); return; }
+  var ciu=ses.ciu||{}, rutas={}; Object.keys(ciu).forEach(function(c){ var r=rutaDe(c); rutas[r]=(rutas[r]||0)+1; });
+  var auxs={}; LSD.tareas.forEach(function(t){ if(t.datos.asignadoId) auxs[t.datos.asignadoId]=1; });
   var chip=function(act,v,txt,sel){ return '<span class="chip btn2 '+(sel?"sel":"")+'" data-act="'+act+'" data-v="'+esc(v)+'">'+esc(txt)+'</span>'; };
   var h='<div class="noprint"><div class="row"><h1 class="grow" style="margin:6px 0">Listado de separación</h1><button class="btn gold sm" data-act="lsimprimir">Imprimir</button></div><p class="muted small">Se imprime en hoja horizontal. Elige la ruta y el piso o auxiliar para sacar un listado por persona.</p>'+
-    '<label class="lb">Ruta</label><div class="seg">'+chip("lsruta","","TODAS",!LST.ruta)+Object.keys(rutas).sort().map(function(r){ return chip("lsruta",r,r+" ("+rutas[r]+")",LST.ruta===r); }).join("")+'</div>'+
+    (Object.keys(ciu).length?'<label class="lb">Ruta</label><div class="seg">'+chip("lsruta","","TODAS",!LST.ruta)+Object.keys(rutas).sort().map(function(r){ return chip("lsruta",r,r+" ("+rutas[r]+" pobl.)",LST.ruta===r); }).join("")+'</div>':'<p class="small muted">Esta sesión no guardó las poblaciones: el filtro por ruta no está disponible.</p>')+
     '<label class="lb">Piso / auxiliar</label><div class="seg">'+chip("lspiso","","TODOS",!LST.piso)+Object.keys(auxs).map(function(a){ return chip("lspiso",a,nombreDe(a),LST.piso===a); }).join("")+chip("lspiso","__sin","Sin asignar",LST.piso==="__sin")+'</div></div>';
-  var C=listadoCalc(N), t=C.t, ciudad=(ciudadPorCo(N.co)||{nombre:N.co}).nombre;
+  var C=listadoCalc(), t=C.t, ciudad=ses.ciudad||"";
   var fp=LST.piso?(LST.piso==="__sin"?"Sin asignar":nombreDe(LST.piso)):"TODOS";
-  h+='<div class="lst-sheet"><div class="lst-title">LISTADO DE SEPARACIÓN · '+esc(ciudad.toUpperCase())+'</div>'+
+  h+='<div class="lst-sheet"><div class="lst-title">LISTADO DE SEPARACIÓN · '+esc(String(ciudad).toUpperCase())+'</div>'+
     '<div class="lst-head"><table class="lst-res"><tr><th>Piso / auxiliar</th><td>'+esc(fp)+'</td><th>Cajas totales</th><td>'+nf(t.cajas)+'</td><th>Peso estimado</th><td>'+t.kg.toLocaleString("es-CO",{maximumFractionDigits:2})+' kg</td></tr><tr><th>Ruta</th><td><b>'+esc(LST.ruta||"TODAS")+'</b></td><th>Unid. sueltas</th><td>'+nf(t.sueltas)+'</td><th>Volumen estimado</th><td>'+t.m3.toLocaleString("es-CO",{maximumFractionDigits:1})+' m³</td></tr><tr><th>Generado</th><td>'+esc(new Date().toLocaleString("es-CO",{dateStyle:"short",timeStyle:"short"}))+'</td><th>Referencias</th><td>'+nf(C.items.length)+'</td><th>Vehículo sugerido</th><td><b>'+esc(sugerirVehiculo(t.kg,t.m3))+'</b></td></tr></table></div>';
   h+='<table class="lst"><thead><tr><th class="ck">✓</th>'+(C.conUbic?'<th>Ubicación</th>':'')+'<th>Referencia</th><th class="dc">Descripción</th><th>Bodega</th><th>Cód. barras</th><th class="n">U.E</th><th class="n">Cajas</th><th class="n">Unidades</th></tr></thead><tbody>'+
-    C.items.map(function(it){ var m=C.M[it.ref]||{}; return '<tr><td class="ck">☐</td>'+(C.conUbic?'<td>'+esc(m.ubicacion||"")+'</td>':'')+'<td><b>'+esc(it.ref)+'</b></td><td class="dc">'+esc(it.desc)+'</td><td>'+esc(it.bod)+'</td><td class="mono">'+esc(it.bar)+'</td><td class="n">'+esc(it.ue)+'</td><td class="n"><b>'+nf(it._c)+'</b></td><td class="n"><b>'+nf(it._s)+'</b></td>'+'</tr>'; }).join("")+'</tbody></table>';
+    C.items.map(function(it){ var m=C.M[it.ref]||{}; return '<tr><td class="ck">☐</td>'+(C.conUbic?'<td>'+esc(m.ubicacion||"")+'</td>':'')+'<td><b>'+esc(it.ref)+'</b></td><td class="dc">'+esc(it.desc)+'</td><td>'+esc(it.bod)+'</td><td class="mono">'+esc(it.bar)+'</td><td class="n">'+esc(it.ue)+'</td><td class="n"><b>'+nf(it._c)+'</b></td><td class="n"><b>'+nf(it._s)+'</b></td></tr>'; }).join("")+'</tbody></table>';
   if(!C.items.length) h+='<div class="empty">No hay referencias con este filtro.</div>';
   h+='</div>';
   if(t.sin.length) h+='<div class="hint warn noprint" style="margin-top:10px"><b>'+t.sin.length+' referencias sin peso o volumen en el maestro</b>: el peso y el volumen estimados quedan por debajo de lo real. Complétalas en Administración → Maestro.</div>';
   app(h);
 };
-
 /* ===== 99_boot.js ===== */
 /* ---------- eventos, carga al entrar a cada pantalla, actualizacion automatica y arranque ---------- */
 document.addEventListener("click",function(e){
