@@ -122,27 +122,23 @@ table.lst tbody tr:nth-child(even){background:#f0f0f0}
 table.lst .n{text-align:right;white-space:nowrap}
 table.lst .ck{text-align:center;width:28px}
 @media print{
-  @page{size:letter landscape;margin:8mm}
+  @page{size:letter landscape;margin:6mm}
   html,body{background:#fff!important}
   #top,.noprint,.toast,nav{display:none!important}
-  .lst-sheet{border:0;padding:0;margin:0;overflow:visible}
-  table.lst{font-size:11px}
+  main#app{max-width:none!important;width:100%!important;margin:0!important;padding:0!important}
+  .lst-sheet{border:0;padding:0;margin:0;overflow:visible;border-radius:0}
+  .lst-title{font-size:13px;padding:4px;border-radius:3px}
+  .lst-res{margin:4px 0;font-size:10.5px}
+  .lst-res th,.lst-res td{padding:2px 6px}
+  .lst-res th{width:11%;white-space:nowrap}
+  table.lst{font-size:10.5px;width:100%}
+  table.lst th{padding:3px 5px;font-size:10px}
+  table.lst td{padding:1.5px 5px;line-height:1.15}
+  table.lst .dc{width:100%}
   table.lst thead{display:table-header-group}
   table.lst tr{page-break-inside:avoid}
   .lst-title,table.lst th,.lst-res th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
-
-/* ---- interruptor Oferta virtual ---- */
-.swwrap{margin-bottom:10px}
-.swwrap .task{margin-bottom:2px}
-label.sw{display:flex;align-items:center;gap:10px;padding:6px 4px;cursor:pointer;font-size:13px;font-weight:600}
-label.sw small{font-weight:400;opacity:.7}
-label.sw input{position:absolute;opacity:0;width:0;height:0}
-label.sw i{flex:none;width:42px;height:24px;border-radius:12px;background:#bbb;position:relative;transition:background .15s}
-label.sw i::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .15s}
-label.sw input:checked+i{background:var(--gold,#c2aa5b)}
-label.sw input:checked+i::after{transform:translateX(18px)}
-
 </style>
 </head>
 <body>
@@ -1879,9 +1875,9 @@ VIEWS.listado=function(){
   var C=listadoCalc(N), t=C.t, ciudad=(ciudadPorCo(N.co)||{nombre:N.co}).nombre;
   var fp=LST.piso?(LST.piso==="__sin"?"Sin asignar":nombreDe(LST.piso)):"TODOS";
   h+='<div class="lst-sheet"><div class="lst-title">LISTADO DE SEPARACIÓN · '+esc(ciudad.toUpperCase())+'</div>'+
-    '<div class="lst-head"><table class="lst-res"><tr><th>Piso / auxiliar</th><td>'+esc(fp)+'</td><th>Cajas totales</th><td>'+nf(t.cajas)+'</td></tr><tr><th>Ruta</th><td><b>'+esc(LST.ruta||"TODAS")+'</b></td><th>Unid. sueltas</th><td>'+nf(t.sueltas)+'</td></tr><tr><th>Fecha de generación</th><td>'+esc(new Date().toLocaleString("es-CO",{dateStyle:"short",timeStyle:"short"}))+'</td><th>Peso estimado</th><td>'+t.kg.toLocaleString("es-CO",{maximumFractionDigits:2})+' kg</td></tr><tr><th>Referencias</th><td>'+nf(C.items.length)+'</td><th>Volumen estimado</th><td>'+t.m3.toLocaleString("es-CO",{maximumFractionDigits:1})+' m³</td></tr><tr><th></th><td></td><th>Vehículo sugerido</th><td><b>'+esc(sugerirVehiculo(t.kg,t.m3))+'</b></td></tr></table></div>';
-  h+='<table class="lst"><thead><tr><th class="ck">✓</th>'+(C.conUbic?'<th>Ubicación</th>':'')+'<th>Referencia</th><th>Descripción</th><th>Bodega</th><th>Cód. barras</th><th class="n">U.E</th><th class="n">Cajas</th><th class="n">Unidades</th>'+(LST.piso?'':'<th>Auxiliar</th>')+'</tr></thead><tbody>'+
-    C.items.map(function(it){ var m=C.M[it.ref]||{}; return '<tr><td class="ck">☐</td>'+(C.conUbic?'<td>'+esc(m.ubicacion||"")+'</td>':'')+'<td><b>'+esc(it.ref)+'</b></td><td>'+esc(it.desc)+'</td><td>'+esc(it.bod)+'</td><td class="mono">'+esc(it.bar)+'</td><td class="n">'+esc(it.ue)+'</td><td class="n"><b>'+nf(it._c)+'</b></td><td class="n"><b>'+nf(it._s)+'</b></td>'+(LST.piso?'':'<td>'+esc(m.auxiliarId?nombreDe(m.auxiliarId):"")+'</td>')+'</tr>'; }).join("")+'</tbody></table>';
+    '<div class="lst-head"><table class="lst-res"><tr><th>Piso / auxiliar</th><td>'+esc(fp)+'</td><th>Cajas totales</th><td>'+nf(t.cajas)+'</td><th>Peso estimado</th><td>'+t.kg.toLocaleString("es-CO",{maximumFractionDigits:2})+' kg</td></tr><tr><th>Ruta</th><td><b>'+esc(LST.ruta||"TODAS")+'</b></td><th>Unid. sueltas</th><td>'+nf(t.sueltas)+'</td><th>Volumen estimado</th><td>'+t.m3.toLocaleString("es-CO",{maximumFractionDigits:1})+' m³</td></tr><tr><th>Generado</th><td>'+esc(new Date().toLocaleString("es-CO",{dateStyle:"short",timeStyle:"short"}))+'</td><th>Referencias</th><td>'+nf(C.items.length)+'</td><th>Vehículo sugerido</th><td><b>'+esc(sugerirVehiculo(t.kg,t.m3))+'</b></td></tr></table></div>';
+  h+='<table class="lst"><thead><tr><th class="ck">✓</th>'+(C.conUbic?'<th>Ubicación</th>':'')+'<th>Referencia</th><th class="dc">Descripción</th><th>Bodega</th><th>Cód. barras</th><th class="n">U.E</th><th class="n">Cajas</th><th class="n">Unidades</th></tr></thead><tbody>'+
+    C.items.map(function(it){ var m=C.M[it.ref]||{}; return '<tr><td class="ck">☐</td>'+(C.conUbic?'<td>'+esc(m.ubicacion||"")+'</td>':'')+'<td><b>'+esc(it.ref)+'</b></td><td class="dc">'+esc(it.desc)+'</td><td>'+esc(it.bod)+'</td><td class="mono">'+esc(it.bar)+'</td><td class="n">'+esc(it.ue)+'</td><td class="n"><b>'+nf(it._c)+'</b></td><td class="n"><b>'+nf(it._s)+'</b></td>'+'</tr>'; }).join("")+'</tbody></table>';
   if(!C.items.length) h+='<div class="empty">No hay referencias con este filtro.</div>';
   h+='</div>';
   if(t.sin.length) h+='<div class="hint warn noprint" style="margin-top:10px"><b>'+t.sin.length+' referencias sin peso o volumen en el maestro</b>: el peso y el volumen estimados quedan por debajo de lo real. Complétalas en Administración → Maestro.</div>';
