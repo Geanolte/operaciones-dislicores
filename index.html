@@ -430,11 +430,11 @@ function parseComposicion(t){
 }
 /* Matriz de asignacion: Referencia, Descripcion, Zona, Secuencia, Desglosar_Oferta (y opcionales Ubicacion, Auxiliar) */
 function parseMatriz(t){
-  var m=colMap(t.hdr,A_MTZ); if(m.ref<0||m.zona<0) throw new Error("La matriz debe traer las columnas Referencia y Zona.");
+  var m=colMap(t.hdr,A_MTZ); if(m.ref<0||(m.zona<0&&m.aux<0)) throw new Error("La matriz debe traer las columnas Referencia y Auxiliar.");
   var rows=[],zonas={},seen={};
   t.rows.forEach(function(r){
     var ref=normRef(r[m.ref]); if(!ref||seen[ref]) return; seen[ref]=1;
-    var zona=String(r[m.zona]||"").trim();
+    var zona=m.zona>=0?String(r[m.zona]||"").trim():"";
     var flag=m.flag>=0?normH(r[m.flag]):"";
     rows.push({ref:ref,desc:m.desc>=0?String(r[m.desc]||"").trim():"",zona:zona,seq:m.seq>=0?parseDbl(r[m.seq]):0,flag:flag==="si"?"SI":flag==="no"?"NO":"",ubic:m.ubic>=0?String(r[m.ubic]==null?"":r[m.ubic]).trim():"",aux:m.aux>=0?String(r[m.aux]||"").trim():""});
     zonas[zona]=(zonas[zona]||0)+1;
@@ -914,7 +914,7 @@ VIEWS.matriz=function(){
   var co=coActual(), ciudad=(ciudadPorCo(co)||{nombre:co}).nombre, h='';
   if(MZ.co!==co&&!MZ.cargando){ abrirMatriz(); }
   if(esAdmin()) h+='<div class="seg">'+CIUDADES.map(function(c){ return '<span class="chip btn2 '+(co===c.co?"sel":"")+'" data-act="mzco" data-co="'+c.co+'">'+c.nombre+'</span>'; }).join("")+'</div>';
-  h+='<h1>'+esc(ciudad)+' · C.O. '+esc(co)+'</h1><p class="muted small">Define a quién le corresponde cada referencia. El alistamiento y los semáforos usan esta misma matriz. A futuro cada línea podrá llevar su ubicación en la bodega.</p>';
+  h+='<h1>'+esc(ciudad)+' · C.O. '+esc(co)+'</h1><p class="muted small">Define a quién le corresponde cada referencia y en qué orden se recorre (999 = al final). El alistamiento y los semáforos usan esta misma matriz. Las ofertas virtuales no van aquí: se manejan en Ofertas.</p>';
   if(MZ.err) h+='<div class="hint warn">'+esc(MZ.err)+'</div>';
   var M=S.matriz[co];
   if(MZ.cargando||!M){ app(h+'<div class="empty">Cargando matriz…</div>'); return; }
@@ -927,7 +927,7 @@ VIEWS.matriz=function(){
   });
   if(sin) h+='<div class="card"><b>Sin auxiliar asignado</b>: '+nf(sin)+' referencias'+(fuera?' (de ellas '+nf(fuera)+' "fuera del sistema")':'')+'<div class="sp"></div><button class="btn ghost sm" data-act="mzsin">Ver y asignar las '+nf(sin)+'</button></div>';
   h+=matrizListaHtml(co);
-  h+='<div class="sp"></div><div class="card gold"><b>Cargar matriz (opcional)</b><p class="small muted">Solo si la ciudad ya tiene una matriz en Excel (Pereira). Las demás pueden ir asignando referencia por referencia en la lista de arriba.</p><button class="btn block" data-act="mzcargar">Cargar matriz (Excel de zonas)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="zonas">Descargar plantilla</button></div>';
+  h+='<div class="sp"></div><div class="card gold"><b>Cargar matriz (opcional)</b><p class="small muted">Solo si la ciudad ya tiene una matriz en Excel (Pereira). Columnas: Referencia, Descripcion, Secuencia y Auxiliar (el nombre del usuario; «Oferta virtual» se omite). Las demás ciudades pueden asignar referencia por referencia en la lista de arriba.</p><button class="btn block" data-act="mzcargar">Cargar matriz (Excel de zonas)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="zonas">Descargar plantilla</button></div>';
   if(MZ.plan) h+=planMatrizHtml(co);
   app(h); enlazarMatriz();
 };
@@ -938,58 +938,56 @@ ACT.mzsin=function(){
   if(!its.length){ toast("No hay referencias sin auxiliar"); return; }
   abrirSinAsignar("Sin auxiliar en la matriz",its,co,null);
 };
+/* Matriz en Excel: Referencia, Descripcion, Secuencia y Auxiliar. "Oferta virtual" en Auxiliar = la oferta se maneja en Ofertas y no entra a la matriz.
+   Zona, Ubicacion y Desglosar_Oferta son opcionales y por ahora no se usan. */
+function claveMtz(r){ return r.aux||r.zona||""; }
+function esOfVirtualAux(s){ return /^oferta/i.test(String(s||"").trim()); }
 ACT.mzcargar=function(){
   elegirExcel(function(wb,f){
     var t=tablaDe(wb,["referencia"],"Zonas"); if(!t){ toast("No se encontró la columna Referencia"); return; }
     var p; try{ p=parseMatriz(t); }catch(e){ toast(e.message); return; }
-    var co=coActual(), ops=usuariosDe(co,"operario").concat(usuariosDe(co,"coordinador")), map={};
-    Object.keys(p.zonas).forEach(function(z){
-      var u=ops.filter(function(x){ return normH(primerNombre(x.nombre))===normH(z)||normH(x.nombre)===normH(z); })[0];
-      map[z]=u?u.id:"";
+    var co=coActual(), ops=usuariosDe(co,"operario").concat(usuariosDe(co,"coordinador")), map={}, claves={}, ofv=0, sinAux=0;
+    var rows=p.rows.filter(function(r){ if(esOfVirtualAux(r.aux)||esOfVirtualAux(r.zona)){ ofv++; return false; } return true; });
+    rows.forEach(function(r){ var k=claveMtz(r); if(!k) sinAux++; claves[k]=(claves[k]||0)+1; });
+    Object.keys(claves).forEach(function(k){
+      var u=ops.filter(function(x){ return normH(x.nombre)===normH(k)||normH(primerNombre(x.nombre))===normH(k); })[0];
+      map[k]=u?u.id:"";
     });
     var M=S.matriz[co]||{}, nuevas=0, cambian=0, iguales=0, seen={};
-    p.rows.forEach(function(r){ seen[r.ref]=1; var prev=M[r.ref]; if(!prev) nuevas++; else { var aux=map[r.zona]||""; if((prev.auxiliarId||"")!==aux||String(prev.zona||"")!==r.zona) cambian++; else iguales++; } });
+    rows.forEach(function(r){ seen[r.ref]=1; var prev=M[r.ref]; if(!prev) nuevas++; else { var aux=map[claveMtz(r)]||""; if((prev.auxiliarId||"")!==aux||(r.seq&&(prev.secuencia||0)!==r.seq)) cambian++; else iguales++; } });
     var fuera=Object.keys(M).filter(function(k){ return !seen[k]; }).length;
-    var sinF=p.rows.filter(function(r){ return r.flag==="SI"; }).length, noF=p.rows.filter(function(r){ return r.flag==="NO"; }).length;
-    MZ.plan={nombre:f.name,p:p,nuevas:nuevas,cambian:cambian,iguales:iguales,fuera:fuera,flagSI:sinF,flagNO:noF,aplicarFlags:(sinF+noF)>0};
+    MZ.plan={nombre:f.name,rows:rows,claves:claves,nuevas:nuevas,cambian:cambian,iguales:iguales,fuera:fuera,ofv:ofv,sinAux:sinAux};
     MZ.map=map; render();
   });
 };
 function planMatrizHtml(co){
-  var P=MZ.plan, ops=usuariosDe(co,"operario").concat(usuariosDe(co,"coordinador"));
-  var h='<div class="card gold"><b>'+esc(P.nombre)+'</b><div class="small muted">'+nf(P.p.rows.length)+' referencias · '+P.nuevas+' nuevas · '+P.cambian+' cambian · '+P.iguales+' sin cambio'+(P.fuera?' · '+P.fuera+' están en la matriz y no en el archivo (se conservan)':'')+'</div>'+
-    '<label class="lb">Asignar cada zona a un auxiliar</label><table class="mini"><tr><th>Zona del archivo</th><th>Refs</th><th>Auxiliar</th></tr>'+
-    Object.keys(P.p.zonas).sort(function(a,b){ return P.p.zonas[b]-P.p.zonas[a]; }).map(function(z){
-      return '<tr><td><b>'+esc(z||"(vacía)")+'</b></td><td class="mono">'+nf(P.p.zonas[z])+'</td><td><select data-zmap="'+esc(z)+'" class="compact"><option value="">— Sin asignar —</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'"'+(MZ.map[z]===u.id?' selected':'')+'>'+esc(u.nombre)+'</option>'; }).join("")+'</select></td></tr>';
+  var P=MZ.plan, ops=usuariosDe(co,"operario").concat(usuariosDe(co,"coordinador")), ks=Object.keys(P.claves);
+  var sinMatch=ks.filter(function(k){ return k&&!MZ.map[k]; }).length;
+  var h='<div class="card gold"><b>'+esc(P.nombre)+'</b><div class="small muted">'+nf(P.rows.length)+' referencias · '+nf(P.nuevas)+' nuevas · '+nf(P.cambian)+' cambian · '+nf(P.iguales)+' sin cambio'+(P.ofv?' · '+nf(P.ofv)+' "oferta virtual" omitidas (se manejan en Ofertas)':'')+(P.fuera?' · '+nf(P.fuera)+' están en la matriz y no en el archivo (se conservan)':'')+'</div>'+
+    (sinMatch?'<div class="hint warn" style="margin-top:8px">'+sinMatch+' nombre(s) del archivo no coinciden con un usuario de este C.O.: elige a quién corresponden o déjalos sin asignar.</div>':'')+
+    '<label class="lb">Auxiliar del archivo → usuario de la app</label><table class="mini"><tr><th>En el archivo</th><th>Refs</th><th>Usuario</th></tr>'+
+    ks.sort(function(a,b){ return P.claves[b]-P.claves[a]; }).map(function(k){
+      return '<tr><td><b>'+esc(k||"(vacío)")+'</b></td><td class="mono">'+nf(P.claves[k])+'</td><td><select data-zmap="'+esc(k)+'" class="compact"><option value="">— Sin asignar —</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'"'+(MZ.map[k]===u.id?' selected':'')+'>'+esc(u.nombre)+'</option>'; }).join("")+'</select></td></tr>';
     }).join("")+'</table>';
-  if(P.flagSI+P.flagNO) h+='<label class="row" style="margin-top:10px;gap:8px"><input type="checkbox" id="mzflags" '+(P.aplicarFlags?'checked':'')+' style="width:auto"> <span class="small">Categorizar también las <b>ofertas</b> según la marca de desglose del archivo (SÍ = virtual; no cambia las ya categorizadas) ('+P.flagSI+' en SÍ, '+P.flagNO+' en NO)</span></label>';
   h+='<div class="sp"></div><div class="row"><button class="btn gold grow" data-act="mzaplicar">Aplicar a la matriz de este C.O.</button><button class="btn ghost" data-act="mzcancelar">Cancelar</button></div></div>';
   return h;
 }
-document.addEventListener("change",function(e){ var t=e.target; if(t&&t.getAttribute&&t.hasAttribute("data-zmap")){ MZ.map[t.getAttribute("data-zmap")]=t.value; } if(t&&t.id==="mzflags"&&MZ.plan){ MZ.plan.aplicarFlags=t.checked; } });
+document.addEventListener("change",function(e){ var t=e.target; if(t&&t.getAttribute&&t.hasAttribute("data-zmap")){ MZ.map[t.getAttribute("data-zmap")]=t.value; } });
 ACT.mzcancelar=function(){ MZ.plan=null; render(); };
 ACT.mzaplicar=async function(){
   var P=MZ.plan, co=coActual(); if(!P||MZ.aplicando) return;
   var M=S.matriz[co]||{}; MZ.aplicando=true; toast("Aplicando matriz…",6000);
   try{
-    var docs=P.p.rows.map(function(r){
-      var prev=M[r.ref]||{}, aux=(r.aux?(usuariosDe(co).filter(function(u){ return normH(u.nombre)===normH(r.aux)||normH(primerNombre(u.nombre))===normH(r.aux); })[0]||{}).id:"")||MZ.map[r.zona]||"";
-      return {id:r.ref,datos:{referencia:r.ref,descItem:r.desc||prev.descItem||"",zona:r.zona,ubicacion:r.ubic||prev.ubicacion||"",secuencia:r.seq||prev.secuencia||0,auxiliarId:aux,actualizadoEn:ahora(),actualizadoPor:S.me.id}};
+    var docs=P.rows.map(function(r){
+      var prev=M[r.ref]||{};
+      return {id:r.ref,datos:Object.assign({},prev,{referencia:r.ref,descItem:r.desc||prev.descItem||(S.mae[r.ref]&&S.mae[r.ref].d)||"",secuencia:r.seq||prev.secuencia||0,auxiliarId:MZ.map[claveMtz(r)]||"",actualizadoEn:ahora(),actualizadoPor:S.me.id})};
     });
-    await DB.setMany("matrices/"+co+"/lineas",docs,function(a,b){ });
-    if(P.aplicarFlags){
-      /* las marcas SI/NO categorizan la oferta para todas las ciudades (sin pisar las ya categorizadas) */
-      var cats=[]; P.p.rows.forEach(function(r){ var u=r.ref.toUpperCase(), prev=S.cat[u]; if(!r.flag||(prev&&prev.virtual!=null)) return; if(!(r.flag==="SI"||esOferta(u,r.desc)||S.ofr[u])) return;
-        cats.push({id:u,datos:Object.assign({},prev||{},{codigo:u,desc:r.desc||(prev&&prev.desc)||"",virtual:r.flag==="SI",origen:(prev&&prev.origen)||"matriz",actualizadoEn:ahora(),actualizadoPor:S.me.id})}); });
-      if(cats.length) await DB.setMany("ofertas_cat",cats);
-      await cargarBase();
-    }
+    await DB.setMany("matrices/"+co+"/lineas",docs);
     toast("Matriz aplicada: "+nf(docs.length)+" referencias"); MZ.plan=null;
     await cargarMatriz(co,true);
   }catch(e){ toast("No se pudo aplicar: "+(e.message||e),4000); }
   MZ.aplicando=false; render();
 };
-
 /* ---------- ofertas: base unica de las 5 ciudades. Categoria global (virtual SI/NO) + excepcion por ciudad + composicion ---------- */
 var OF={filtro:"todas",q:""};
 function ofertasLista(){
@@ -1105,7 +1103,7 @@ ACT.ofcat=function(){
 var PLANTILLAS={
   composicion:{n:"Plantilla_Composicion_Ofertas.xlsx",hoja:"Ofertas",f:[["Referencia","Desc. Item","Referencia comp.","Desc. item comp.","Cantidad Requerida"],["000372","OF. LIMP. DESINF. X500 3 UNS (EJEMPLO)","000335","LIMPIADOR LAVANDA X500 (EJEMPLO)",1],["000372","OF. LIMP. DESINF. X500 3 UNS (EJEMPLO)","000350","LIMPIADOR CANELA X500 (EJEMPLO)",1],["OF000001","OFERTA EJEMPLO PAGUE 6 LLEVE 7","000443","PRODUCTO EJEMPLO",7]]},
   categorias:{n:"Plantilla_Categoria_Ofertas.xlsx",hoja:"Categoria",f:[["Referencia","Descripcion","Virtual","Pereira","Armenia","Manizales","Ibague","Neiva"],["000372","OF. LIMP. DESINF. X500 3 UNS (EJEMPLO)","SI","","","","",""],["000436","PAPEL ALUMINIO KILO (EJEMPLO, NO ES OFERTA)","NO","","","","",""],["OF000001","OFERTA EJEMPLO","SI","","NO","","",""]]},
-  zonas:{n:"Plantilla_Matriz_Zonas.xlsx",hoja:"Zonas",f:[["Referencia","Descripcion","Zona","Secuencia","Desglosar_Oferta","Ubicacion","Auxiliar"],["100001","PRODUCTO EJEMPLO A","GUANTE",1,"NO","",""],["100002","PRODUCTO EJEMPLO B","RUBEN",2,"NO","",""],["000372","OF. EJEMPLO","FUERA DEL SISTEMA",1,"SI","",""]]},
+  zonas:{n:"Plantilla_Matriz.xlsx",hoja:"Matriz",f:[["Referencia","Descripcion","Secuencia","Auxiliar"],["100001","PRODUCTO EJEMPLO A",1,"Nombre Apellido del auxiliar"],["100002","PRODUCTO EJEMPLO B",999,"Nombre Apellido del auxiliar"],["000372","OF. EJEMPLO",999,"Oferta virtual"]]},
   poblaciones:{n:"Plantilla_Poblaciones_Rutas.xlsx",hoja:"POBLACIONES",f:[["Ciudad","Ruta"],["POBLACION EJEMPLO","RUTA 1"],["OTRA POBLACION","RUTA 1"]]},
   maestro:{n:"Plantilla_Maestro_Productos.xlsx",hoja:"MAESTRO",f:[["Referencia","Descripcion","Codigo de barras","Factor U.M.","GRUPO SHOPPER","LINEA PROVEEDOR","001-PESO INDIVIDUAL","001-ANCHO EMBALAJE","001-ALTO EMBALAJE","001-PROFUNDIDAD EMBALAJE","001-VOLUMEN INDIVIDUAL"],["100001","PRODUCTO EJEMPLO A","7700000000017",12,"GRUPO EJEMPLO","LINEA EJEMPLO",0.5,30,20,25,0.0004]]}
 };
@@ -1270,7 +1268,7 @@ function matrizFiltrada(co){
 function matrizListaHtml(co){
   var M=S.matriz[co]||{}, lista=matrizFiltrada(co), auxs={}; Object.keys(M).forEach(function(k){ if(M[k].auxiliarId) auxs[M[k].auxiliarId]=1; });
   var h='<h2>Referencias</h2><div class="seg">'+[["todas","Todas"],["sin","Sin asignar"],["con","Asignadas"]].map(function(f){ return '<span class="chip btn2 '+(MT.f===f[0]?"sel":"")+'" data-act="mtfiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>';
-  h+='<div class="row" style="margin-top:8px"><input type="search" id="mtq" class="grow" placeholder="Buscar referencia, descripción o ubicación" value="'+esc(MT.q)+'"><select id="mtaux" style="max-width:45%"><option value="">Todos los auxiliares</option>'+Object.keys(auxs).map(function(a){ return '<option value="'+esc(a)+'"'+(MT.aux===a?" selected":"")+'>'+esc(nombreDe(a))+'</option>'; }).join("")+'</select></div>';
+  h+='<div class="row" style="margin-top:8px"><input type="search" id="mtq" class="grow" placeholder="Buscar referencia o descripción" value="'+esc(MT.q)+'"><select id="mtaux" style="max-width:45%"><option value="">Todos los auxiliares</option>'+Object.keys(auxs).map(function(a){ return '<option value="'+esc(a)+'"'+(MT.aux===a?" selected":"")+'>'+esc(nombreDe(a))+'</option>'; }).join("")+'</select></div>';
   h+='<p class="small muted">'+nf(lista.length)+' referencias'+(lista.length>100?' (se muestran las primeras 100)':'')+'</p>';
   if(lista.length>1) h+='<button class="btn ghost sm" data-act="mtmasivo">Asignar las '+nf(lista.length)+' de la lista a un auxiliar…</button><div class="sp"></div>';
   h+=lista.slice(0,100).map(function(k){ var m=M[k];
@@ -1287,13 +1285,12 @@ function hojaLinea(k){
   var co=coActual(), nuevo=!k, m=k?(S.matriz[co]||{})[k]||{}:{};
   var bg=abrirSheet('<h3>'+(nuevo?'Nueva referencia en la matriz':esc(k))+'</h3>'+(nuevo?'<label class="lb">Referencia</label><input id="mlRef" type="text" autocapitalize="characters">':'<p class="small muted">'+esc(m.descItem||(S.mae[k]&&S.mae[k].d)||"")+'</p>')+
     '<label class="lb">Auxiliar</label><select id="mlAux">'+selAux(co,m.auxiliarId||"")+'</select>'+
-    '<label class="lb">Ubicación en la bodega</label><input id="mlUb" type="text" value="'+esc(m.ubicacion||"")+'" placeholder="Ej. P2-A14">'+
-    '<div class="row"><div class="grow"><label class="lb">Orden de recorrido</label><input id="mlSeq" type="number" min="0" value="'+esc(m.secuencia||"")+'"></div><div class="grow"><label class="lb">Zona</label><input id="mlZona" type="text" value="'+esc(m.zona||"")+'"></div></div>'+
+    '<label class="lb">Orden de recorrido (999 = al final)</label><input id="mlSeq" type="number" min="0" value="'+esc(m.secuencia||"")+'">'+
     '<div class="sp"></div><button class="btn gold block" id="mlOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="mlX">Cancelar</button>');
   $("#mlX",bg).onclick=cerrarSheet;
   $("#mlOk",bg).onclick=async function(){
     var ref=nuevo?($("#mlRef",bg).value||"").trim().toUpperCase():k; if(!ref){ toast("Escribe la referencia"); return; }
-    try{ await actualizarMatriz(co,[ref],{auxiliarId:$("#mlAux",bg).value,ubicacion:($("#mlUb",bg).value||"").trim(),secuencia:parseInt($("#mlSeq",bg).value,10)||0,zona:($("#mlZona",bg).value||"").trim()}); cerrarSheet(); toast("Guardado"); render(); }
+    try{ await actualizarMatriz(co,[ref],{auxiliarId:$("#mlAux",bg).value,secuencia:parseInt($("#mlSeq",bg).value,10)||0}); cerrarSheet(); toast("Guardado"); render(); }
     catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
   };
 }
