@@ -890,7 +890,7 @@ function armarW(id,d,ro){
     (d.facturas||[]).forEach(function(f){ (f.l||[]).forEach(function(a){ var k=f.n+"|"+a[0], x=em[k];
       items.push({key:k,doc:f.n,cli:f.c||"",ref:a[0],desc:a[1],bar:a[2],ue:a[3],total:a[4],grupo:"",linea:"",tipos:"",seq:0,zona:"",sep:sepDe(a[0]),est:x?x[1]:"",hecho:x?x[2]:0,sc:x?x[3]:0,uid:x?x[4]:""}); }); });
   } else {
-    items=(d.items||[]).map(function(a){ var x=em[a[0]]; return {key:a[0],ref:a[0],desc:a[1],bar:a[2],ue:a[3],total:a[4],grupo:a[5],linea:a[6],tipos:a[7]||"",seq:a[8]||0,zona:a[9]||"",sep:desp?sepDe(a[0]):"",est:x?x[1]:"",hecho:x?x[2]:0,sc:x?x[3]:0,uid:x?x[4]:""}; });
+    items=(d.items||[]).map(function(a){ var x=em[a[0]]; return {key:a[0],ref:a[0],desc:a[1],bar:a[2],ue:a[3],total:a[4],grupo:a[5],linea:a[6],tipos:a[7]||"",seq:a[8]||0,zona:a[9]||"",cemp:a[10]||"",sep:desp?sepDe(a[0]):"",est:x?x[1]:"",hecho:x?x[2]:0,sc:x?x[3]:0,uid:x?x[4]:""}; });
   }
   return {id:id,d:d,items:items,ro:!!ro,modo:modo,fac:"",cambios:{},shared:false};
 }
@@ -1000,7 +1000,7 @@ function listaHtml(){
     if(TR.f==="pend"&&it.est) return; if(TR.f==="hechas"&&!it.est) return; if(TR.g&&it[gf]!==TR.g) return;
     if(q&&normH(it.ref+" "+it.desc).indexOf(q)<0) return;
     var cls=it.est==="ok"?"ok":it.est==="parc"?"parc":it.est==="no"?"no":"";
-    h+='<div class="line '+cls+'" '+(W.ro?'style="cursor:default"':'data-act="linea" data-i="'+i+'"')+'><div style="min-width:0"><div class="r">'+(it.seq?'#'+it.seq+' · ':'')+esc(it.ref)+'</div><div class="d">'+esc(it.desc)+'</div><div class="row">'+(desp?(it.sep?'<span class="chip info">'+esc(it.sep)+'</span>':''):'<span class="chip info">'+esc(it.grupo)+'</span>')+(it.linea?'<span class="chip info">'+esc(it.linea)+'</span>':'')+(it.tipos?'<span class="chip sel">'+esc(it.tipos)+'</span>':'')+(it.est==="parc"?'<span class="chip warn">hecho '+fmtQty(it.hecho,it.ue)+'</span>':'')+(it.est==="no"?'<span class="chip bad">sin stock</span>':'')+(it.est&&it.uid&&it.uid!==S.me.id?'<span class="chip">hizo '+esc(nombreDe(it.uid))+'</span>':'')+'</div></div><div class="q">'+esc(fmtQty(it.total,it.ue))+'</div></div>';
+    h+='<div class="line '+cls+'" '+(W.ro?'style="cursor:default"':'data-act="linea" data-i="'+i+'"')+'><div style="min-width:0"><div class="r">'+(it.seq?'#'+it.seq+' · ':'')+esc(it.ref)+'</div><div class="d">'+esc(it.desc)+'</div><div class="row">'+(desp?(it.sep?'<span class="chip info">'+esc(it.sep)+'</span>':''):'<span class="chip info">'+esc(it.grupo)+'</span>')+(it.linea?'<span class="chip info">'+esc(it.linea)+'</span>':'')+(it.tipos?'<span class="chip sel">'+esc(it.tipos)+'</span>':'')+(it.cemp?'<span class="chip warn">⚠ '+esc(it.cemp)+'</span>':'')+(it.est==="parc"?'<span class="chip warn">hecho '+fmtQty(it.hecho,it.ue)+'</span>':'')+(it.est==="no"?'<span class="chip bad">sin stock</span>':'')+(it.est&&it.uid&&it.uid!==S.me.id?'<span class="chip">hizo '+esc(nombreDe(it.uid))+'</span>':'')+'</div></div><div class="q">'+esc(fmtQty(it.total,it.ue))+'</div></div>';
   });
   return h||'<p class="muted" style="text-align:center;padding:20px">No hay referencias en este filtro.</p>';
 }
@@ -1016,7 +1016,7 @@ ACT.reasignar=async function(){
 function buscarPorCodigo(c){ var cod=normCod(c); if(!cod) return -1; for(var i=0;i<W.items.length;i++){ if(normCod(W.items[i].bar)===cod||normCod(W.items[i].ref)===cod) return i; } return -1; }
 function abrirLinea(i,validado,sinEsc){
   var it=W.items[i]; var ok=validado||sinEsc||!S.exigir||!it.bar;
-  var bg=abrirSheet('<div class="row"><span class="r mono" style="font-weight:700;color:var(--gold-dark)">'+esc(it.ref)+'</span><span class="chip info">'+esc(it.grupo)+'</span></div><h3>'+esc(it.desc)+'</h3>'+
+  var bg=abrirSheet('<div class="row"><span class="r mono" style="font-weight:700;color:var(--gold-dark)">'+esc(it.ref)+'</span><span class="chip info">'+esc(it.grupo)+'</span></div><h3>'+esc(it.desc)+'</h3>'+(it.cemp?'<div class="hint warn" style="margin:6px 0">⚠ '+esc(it.cemp)+'. Verifica la caja antes de tomar.</div>':'')+
     '<div class="muted small">Código de barras: <span class="mono">'+esc(it.bar||"sin dato")+'</span></div><div class="sp"></div>'+
     '<div class="muted small">Tomar</div><div class="big">'+esc(fmtQty(it.total,it.ue))+'</div><div class="small muted">Total '+nf(it.total)+' unidades'+(it.ue>1?' · empaque de '+it.ue:'')+'</div><div class="sp"></div>'+
     (ok?'<div class="chip ok" style="margin-bottom:8px">'+(validado?"Código verificado ✓":"Confirmación sin escaneo")+'</div>':'<div class="hint warn" style="margin-bottom:8px">Escanee el producto para confirmar que es el correcto.</div><button class="btn gold block" id="lnScan">Escanear para confirmar</button><div class="sp"></div>')+
@@ -1161,12 +1161,13 @@ function hojaOferta(k){
     '<label class="lb">Composición (qué trae la oferta)</label>'+(filas.length?'':'<div class="hint warn" id="ofSinC">Sin composición: agrega los componentes y su cantidad para poder desglosarla.</div>')+
     '<div id="ofComps">'+filas.map(ofFilaComp).join("")+'</div><button class="btn ghost sm" type="button" id="ofAdd">+ Agregar componente</button>'+
     '<label class="lb">Excepción por ciudad</label>'+CIUDADES.map(function(ci){ var f=(S.desg[ci.co]||{})[k]; var vv=f===true?"SI":f===false?"NO":""; return '<div class="row" style="margin-bottom:6px"><span class="grow">'+esc(ci.nombre)+'</span><select class="ofCiu" data-co="'+ci.co+'"><option value=""'+(vv===""?" selected":"")+'>Según categoría</option><option value="SI"'+(vv==="SI"?" selected":"")+'>Desglosar</option><option value="NO"'+(vv==="NO"?" selected":"")+'>No desglosar</option></select></div>'; }).join("")+
-    '<div class="sp"></div><button class="btn gold block" id="ofOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="ofX">Cancelar</button>');
+    '<div class="sp"></div><button class="btn gold block" id="ofOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="ofX">Cancelar</button>'+'<div class="sp"></div><button class="btn red block" id="ofDel">Eliminar oferta</button>');
   var box=$("#ofComps",bg);
   box.addEventListener("click",function(e){ if(e.target.classList.contains("ofDel")){ var r=e.target.closest(".ofRow"); if(r) r.remove(); } });
   box.addEventListener("input",function(e){ if(e.target.classList.contains("ofR")){ var r=e.target.closest(".ofRow"), ref=e.target.value.trim(), m=S.mae[ref]||S.mae[ref.toUpperCase()]; r.querySelector(".ofD").textContent=ref?(m?m.d||"":"(no está en el maestro)"):""; } });
   $("#ofAdd",bg).onclick=function(){ var t=document.createElement("div"); t.innerHTML=ofFilaComp({ref:"",cant:1}); box.appendChild(t.firstChild); var w=$("#ofSinC",bg); if(w) w.remove(); var ins=box.querySelectorAll(".ofR"); ins[ins.length-1].focus(); };
   $("#ofX",bg).onclick=cerrarSheet;
+  $("#ofDel",bg).onclick=function(){ if(!confirm("¿Eliminar la oferta "+k+" (categoría, composición y excepciones por ciudad)? La composición y la categoría las comparte Semáforos.")) return; borrarOfertas([k],false).then(function(){ cerrarSheet(); toast("Oferta eliminada"); render(); }).catch(function(e){ toast("No se pudo eliminar: "+(e.message||e)); }); };
   $("#ofOk",bg).onclick=async function(){
     var v=$("#ofCat",bg).value, virt=v===""?null:v==="1", comps=[], malas=0;
     $$(".ofRow",bg).forEach(function(r){ var ref=r.querySelector(".ofR").value.trim(), q=parseFloat(String(r.querySelector(".ofQ").value).replace(",",".")); if(!ref) return; if(!(q>0)){ malas++; return; } comps.push({ref:ref,desc:(S.mae[ref]&&S.mae[ref].d)||"",cant:q}); });
@@ -1301,6 +1302,13 @@ function selAux(co,sel){
 }
 
 /* ===== Pendientes (se calculan solos con lo que hay cargado) ===== */
+/* Aviso de empaque para el auxiliar: cambio pendiente de confirmar o aceptado en los ultimos 30 dias */
+function avisoEmpaque(ref){
+  var m=S.mae[ref]; if(!m) return "";
+  if(m.empaqueNuevo) return "Empaque: el listado trae "+m.empaqueNuevo+" por caja (maestro "+(m.u||1)+")";
+  var h=m.histEmpaque; if(h&&h.length){ var x=h[h.length-1]; if(Date.now()-Date.parse(x.fecha)<30*86400000) return "Empaque cambió: antes "+x.de+", ahora "+x.a+" por caja"; }
+  return "";
+}
 function faltasMae(d){
   var f=[]; d=d||{};
   if(!d.d) f.push("descripción"); if(!d.b) f.push("barras"); if(!d.g||/^SIN /i.test(d.g)) f.push("grupo"); if(!d.l||/^SIN /i.test(d.l)) f.push("línea");
@@ -1418,7 +1426,7 @@ function matrizPanelHtml(co,M,lista){
   h+='<div class="sp"></div><button class="btn gold block" data-act="mtnuevo">+ Agregar referencia</button><div class="sp"></div>';
   h+='<button class="btn block" data-act="mtmasivo" '+(lista.length>0?'':'disabled')+'>Asignar las '+nf(lista.length)+' de la lista a un auxiliar…</button><div class="sp"></div>';
   if(sin) h+='<button class="btn ghost block" data-act="mzsin">Revisar las '+nf(sin)+' sin asignar una por una</button><div class="sp"></div>';
-  h+='<button class="btn ghost block" data-act="mtexportar">Descargar la lista (Excel)</button>';
+  h+='<button class="btn ghost block" data-act="mtexportar">Descargar la lista (Excel)</button><div class="sp"></div>'+BTN_BORRAR+'data-act="mtborrar" '+(lista.length?'':'disabled')+'>Eliminar las '+nf(lista.length)+' de la lista</button>';
   h+='<label class="lb">Mostrar</label><div class="seg vseg">'+[["todas","Todas"],["sin","Sin asignar"],["con","Asignadas"],["virt","Ofertas virtuales"]].map(function(f){ return '<span class="chip btn2 '+(MT.f===f[0]?"sel":"")+'" data-act="mtfiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>';
   h+='<label class="lb">Buscar</label><input type="search" id="mtq" placeholder="Referencia o descripción" value="'+esc(MT.q)+'">';
   h+='<label class="lb">Auxiliar</label><select id="mtaux"><option value="">Todos los auxiliares</option>'+Object.keys(por).sort(function(a,b){ return String(nombreDe(a)).localeCompare(String(nombreDe(b))); }).map(function(a){ return '<option value="'+esc(a)+'"'+(MT.aux===a?" selected":"")+'>'+esc(nombreDe(a))+' ('+por[a]+')</option>'; }).join("")+'</select>';
@@ -1459,8 +1467,9 @@ function hojaLinea(k){
   var bg=abrirSheet('<h3>'+(nuevo?'Nueva referencia en la matriz':esc(k))+'</h3>'+(nuevo?'<label class="lb">Referencia</label><input id="mlRef" type="text" autocapitalize="characters">':'<p class="small muted">'+esc(m.descItem||(S.mae[k]&&S.mae[k].d)||"")+'</p>')+
     '<label class="lb">Auxiliar</label><select id="mlAux">'+selAux(co,m.auxiliarId||"")+'</select>'+
     '<label class="lb">Orden de recorrido (999 = al final)</label><input id="mlSeq" type="number" min="0" value="'+esc(m.secuencia||"")+'">'+
-    '<div class="sp"></div><button class="btn gold block" id="mlOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="mlX">Cancelar</button>');
+    '<div class="sp"></div><button class="btn gold block" id="mlOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="mlX">Cancelar</button>'+(nuevo?'':'<div class="sp"></div><button class="btn red block" id="mlDel">Eliminar de la matriz</button>'));
   $("#mlX",bg).onclick=cerrarSheet;
+  if($("#mlDel",bg)) $("#mlDel",bg).onclick=function(){ borrarUno("matrices/"+co+"/lineas",k,"la referencia "+k+" de la matriz (la matriz la comparte Semáforos)",function(){ delete (S.matriz[co]||{})[k]; cerrarSheet(); render(); }); };
   $("#mlOk",bg).onclick=async function(){
     var ref=nuevo?($("#mlRef",bg).value||"").trim().toUpperCase():k; if(!ref){ toast("Escribe la referencia"); return; }
     try{ await actualizarMatriz(co,[ref],{auxiliarId:$("#mlAux",bg).value,secuencia:parseInt($("#mlSeq",bg).value,10)||0}); cerrarSheet(); toast("Guardado"); render(); }
@@ -1727,11 +1736,12 @@ function hojaVehiculo(placa){
     '<div class="row"><div class="grow">'+inp("vhL","Largo (m)",d.largo||"",' type="number" inputmode="decimal" step="any"')+'</div><div class="grow">'+inp("vhA","Ancho (m)",d.ancho||"",' type="number" inputmode="decimal" step="any"')+'</div><div class="grow">'+inp("vhH","Alto (m)",d.alto||"",' type="number" inputmode="decimal" step="any"')+'</div></div>'+
     inp("vhM3","Cubicación en m³ (se calcula sola con las medidas)",d.m3||"",' type="number" inputmode="decimal" step="any"')+
     '<p class="small muted">* Obligatorio. Los datos de capacidad y cubicación se guardan para este vehículo y no se vuelven a preguntar.</p>'+
-    '<div class="sp"></div><button class="btn gold block" id="vhOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="vhX">Cancelar</button>');
+    '<div class="sp"></div><button class="btn gold block" id="vhOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="vhX">Cancelar</button>'+(nuevo?'':'<div class="sp"></div><button class="btn red block" id="vhDel">Eliminar vehículo</button>'));
   var num=function(id){ var x=parseFloat(String($(id,bg).value).replace(",",".")); return x>0?x:0; };
   var calc=function(){ var l=num("#vhL"), a=num("#vhA"), h=num("#vhH"); if(l&&a&&h) $("#vhM3",bg).value=Math.round(l*a*h*100)/100; };
   ["#vhL","#vhA","#vhH"].forEach(function(id){ $(id,bg).oninput=calc; });
   $("#vhX",bg).onclick=cerrarSheet;
+  if($("#vhDel",bg)) $("#vhDel",bg).onclick=function(){ borrarUno("vehiculos",co+"-"+d.placa,"el vehículo "+d.placa,function(){ cerrarSheet(); cargarVeh(); }); };
   $("#vhOk",bg).onclick=async function(){
     var pl=nuevo?($("#vhP",bg).value||"").toUpperCase().replace(/[\s-]/g,""):d.placa;
     if(!plateOk(pl)){ toast("La placa debe tener 3 letras y 3 números"); return; }
@@ -1762,7 +1772,7 @@ async function tareasDe(filter,o){
 function tareaDoc(modulo,sid,titulo,co,aux,items,extra){
   var c=ciudadPorCo(co)||{nombre:co}, id=sid+"--"+(aux||"SIN");
   return {id:id,datos:Object.assign({modulo:modulo,sid:sid,co:co,ciudad:c.nombre,titulo:titulo,fecha:hoy(),asignadoId:aux||"",asignadoNombre:aux?nombreDe(aux):"Sin asignar",
-    items:items.map(function(i){ return [i.ref,i.desc,i.bar,i.ue,i.total,i.grupo,i.linea,i.tipos||"",i.seq||0,i.zona||""]; }),e:[],total:items.length,ok:0,parc:0,no:0,estado:"pendiente",creadoEn:ahora(),actualizadoEn:ahora()},extra||{})};
+    items:items.map(function(i){ return [i.ref,i.desc,i.bar,i.ue,i.total,i.grupo,i.linea,i.tipos||"",i.seq||0,i.zona||"",i.cemp||""]; }),e:[],total:items.length,ok:0,parc:0,no:0,estado:"pendiente",creadoEn:ahora(),actualizadoEn:ahora()},extra||{})};
 }
 
 /* ====================== ALISTAMIENTO ====================== */
@@ -1853,11 +1863,13 @@ function armarSesion(raw,co,iguales){
 async function crearSesionDe(N,detalle){
   var M=await cargarMatriz(N.co), rep=repartirPorMatriz(N.items,M,N.co), co=N.co, ciudad=(ciudadPorCo(co)||{nombre:co}).nombre;
   var titulo="Alistamiento "+ciudad+" "+hoy(), sid="S"+hoy().slice(2).replace(/-/g,"")+"-"+rid(3);
+  var reg={maestro:0,completados:0,matriz:0}; try{ reg=await registrarPendientes(N.items,co); }catch(e){}
+  N.items.forEach(function(it){ it.cemp=avisoEmpaque(it.ref); });
   var docs=Object.keys(rep.por).map(function(a){ return tareaDoc("alistamiento",sid,titulo,co,a,rep.por[a]); });
   if(rep.sin.length) docs.push(tareaDoc("alistamiento",sid,titulo,co,"",rep.sin));
   await DB.set("ops_sesiones",sid,{modulo:"alistamiento",co:co,ciudad:ciudad,titulo:titulo,fecha:hoy(),creadoPor:S.me.nombre,creadoPorId:S.me.id,creadoEn:ahora(),totalRefs:N.items.length,totalUnidades:N.unid,docs:N.docs,bod:N.bod,ciu:N.ciu,archivos:detalle.map(function(a){ return {n:a.n,t:a.t,l:a.l}; })});
   await DB.setMany("ops_tareas",docs);
-  var reg={maestro:0,completados:0,matriz:0}; try{ reg=await registrarPendientes(N.items,co); }catch(e){}
+  
   return {sid:sid,co:co,docs:docs.length,reg:reg};
 }
 
@@ -2035,7 +2047,7 @@ ACT.dfecha=function(el,d){ DF.fecha=d("f"); render(); };
 ACT.enviarcargue=async function(){
   var aux=$("#cgsel").value;
   var cal=planillasCalc()[PL.i], pl=cal.pl, sid="D"+pl.num, co=coActual(); if(tareaDePlanilla(pl)){ toast("Esta planilla ya está en un cargue publicado"); await cargarDesp(); return; }
-  var items=cal.items.map(function(i){ return Object.assign({},i,{tipos:"FAC",seq:0,zona:""}); });
+  var items=cal.items.map(function(i){ return Object.assign({},i,{tipos:"FAC",seq:0,zona:"",cemp:avisoEmpaque(i.ref)}); });
   /* facturas del vehiculo con su cliente (solo el nombre) y sus lineas, para cargar factura por factura */
   var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:cl[f]||"",l:S.desp.lineas[f]}; });
   try{
@@ -2167,8 +2179,9 @@ VIEWS.rutas=function(){
 ACT.rtfiltro=function(el,d){ RT.f=d("f"); render(); };
 function hojaRuta(k){
   var p=k?S.pobl[k]:{}, nuevo=!k, rutas=Array.from(new Set(Object.keys(S.pobl).map(function(x){ return S.pobl[x].ruta; }).filter(Boolean))).sort();
-  var bg=abrirSheet('<h3>'+(nuevo?"Nueva población":esc(p.ciudad))+'</h3>'+(nuevo?'<label class="lb">Población</label><input id="rtC" type="text">':'')+'<label class="lb">Ruta</label><input id="rtR" type="text" list="rtLista" value="'+esc(p.ruta||"")+'" autocapitalize="characters"><datalist id="rtLista">'+rutas.map(function(r){ return '<option value="'+esc(r)+'">'; }).join("")+'</datalist><div class="sp"></div><button class="btn gold block" id="rtOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="rtX">Cancelar</button>');
+  var bg=abrirSheet('<h3>'+(nuevo?"Nueva población":esc(p.ciudad))+'</h3>'+(nuevo?'<label class="lb">Población</label><input id="rtC" type="text">':'')+'<label class="lb">Ruta</label><input id="rtR" type="text" list="rtLista" value="'+esc(p.ruta||"")+'" autocapitalize="characters"><datalist id="rtLista">'+rutas.map(function(r){ return '<option value="'+esc(r)+'">'; }).join("")+'</datalist><div class="sp"></div><button class="btn gold block" id="rtOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="rtX">Cancelar</button>'+(nuevo?'':'<div class="sp"></div><button class="btn red block" id="rtDel">Eliminar población</button>'));
   $("#rtX",bg).onclick=cerrarSheet;
+  if($("#rtDel",bg)) $("#rtDel",bg).onclick=function(){ borrarUno("poblaciones",k,"la población "+p.ciudad,function(){ delete S.pobl[k]; cerrarSheet(); render(); }); };
   $("#rtOk",bg).onclick=async function(){
     var c=nuevo?($("#rtC",bg).value||"").trim():p.ciudad; if(!c){ toast("Escribe la población"); return; } var id=claveCiu(c), ruta=($("#rtR",bg).value||"").trim().toUpperCase();
     try{ var d=Object.assign({},S.pobl[id]||{},{ciudad:c,ruta:ruta,actualizadoEn:ahora()}); await DB.set("poblaciones",id,d); S.pobl[id]=d; cerrarSheet(); toast("Guardado"); render(); }catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
@@ -2246,6 +2259,198 @@ VIEWS.listado=function(){
   if(t.sin.length) h+='<div class="hint warn noprint" style="margin-top:10px"><b>'+t.sin.length+' referencias sin peso o volumen en el maestro</b>: el peso y el volumen estimados quedan por debajo de lo real. Complétalas en Administración → Maestro.</div>';
   app(h);
 };
+/* ===== 70_admin_panel.js ===== */
+/* ---------- Administracion: mismo estilo que la matriz (panel de acciones a la izquierda, lista a la derecha) y todo se puede eliminar: uno por uno o los de la lista de una vez ---------- */
+function layoutAdmin(cab,side,main){
+  app(cab+'<div class="mz-wrap"><aside class="mz-side">'+side+'</aside><section class="mz-main">'+main+'</section></div>'); $("#app").classList.add("wide");
+}
+/* Confirmacion: una sola cosa = confirmar; varias = escribir ELIMINAR */
+function pedirBorrado(msg,n){
+  if(n<=1) return confirm(msg);
+  var x=prompt(msg+"\n\nEscribe ELIMINAR para confirmar:"); return String(x||"").trim().toUpperCase()==="ELIMINAR";
+}
+async function borrarIdsDe(col,ids,todos,filtro){
+  if(todos){ await DB.delFilter(col,filtro||{}); return; }
+  for(var i=0;i<ids.length;i+=20){ await Promise.all(ids.slice(i,i+20).map(function(id){ return DB.del(col,id); })); }
+}
+async function borrarUno(col,id,texto,despues){
+  if(!confirm("¿Eliminar "+texto+"? Esta acción no se puede deshacer.")) return;
+  try{ await DB.del(col,id); toast("Eliminado"); if(despues) despues(); }catch(e){ toast("No se pudo eliminar: "+(e.message||e)); }
+}
+var BTN_BORRAR='<button class="btn ghost block" style="color:#c0392b;border-color:#c0392b" ';
+
+/* ===== Maestro ===== */
+var MAN=100;
+function maeFiltrados(){
+  var q=normH(MA.q);
+  return Object.keys(S.mae).filter(function(k){
+    var d=S.mae[k], f=faltasMae(d);
+    if(MA.f==="emp"&&!d.empaqueNuevo) return false; if(MA.f==="inc"&&!f.length) return false; if(MA.f==="desc"&&f.indexOf("descripción")<0) return false; if(MA.f==="barras"&&f.indexOf("barras")<0) return false;
+    if(MA.f==="gl"&&f.indexOf("grupo")<0&&f.indexOf("línea")<0) return false; if(MA.f==="pv"&&f.indexOf("peso")<0&&f.indexOf("volumen")<0) return false;
+    return !q||normH(k+" "+(d.d||"")).indexOf(q)>=0;
+  }).sort(ordenRef);
+}
+VIEWS.maestro=function(){
+  topbar("Maestro de productos",subtituloUsuario(),true);
+  var ks=Object.keys(S.mae), c={inc:0,desc:0,barras:0,gl:0,pv:0,emp:0};
+  ks.forEach(function(k){ var d=S.mae[k], f=faltasMae(d); if(f.length) c.inc++; if(f.indexOf("descripción")>=0) c.desc++; if(f.indexOf("barras")>=0) c.barras++; if(f.indexOf("grupo")>=0||f.indexOf("línea")>=0) c.gl++; if(f.indexOf("peso")>=0||f.indexOf("volumen")>=0) c.pv++; if(d.empaqueNuevo) c.emp++; });
+  var lista=maeFiltrados(), sinCero=ks.filter(function(k){ return /^\d{1,5}$/.test(k); }).length;
+  var cab='<h1>Maestro de productos</h1><p class="muted small">Compartido por las 5 ciudades. Se alimenta solo: cada referencia nueva que llegue en un listado se registra aquí y queda pendiente hasta completar sus datos.</p>';
+  var fl=[["todos","Todos"],["emp","Cambio de empaque ("+nf(c.emp)+")"],["inc","Incompletos ("+nf(c.inc)+")"],["desc","Sin descripción ("+nf(c.desc)+")"],["barras","Sin barras ("+nf(c.barras)+")"],["gl","Sin grupo/línea ("+nf(c.gl)+")"],["pv","Sin peso/volumen ("+nf(c.pv)+")"]];
+  var side='<div class="kpis kp2"><div class="kpi"><b>'+nf(ks.length)+'</b><span>Productos</span></div><div class="kpi"><b>'+nf(c.inc)+'</b><span>Incompletos</span></div><div class="kpi"><b>'+nf(ks.length-c.inc)+'</b><span>Completos</span></div></div>'+
+    '<div class="sp"></div><button class="btn gold block" data-act="maenuevo">+ Agregar producto</button><div class="sp"></div><button class="btn ghost block" data-act="maeexportar">Descargar la lista (Excel)</button><div class="sp"></div>'+BTN_BORRAR+'data-act="maeborrar" '+(lista.length?'':'disabled')+'>Eliminar los '+nf(lista.length)+' de la lista</button>'+
+    (sinCero?'<div class="hint warn" style="margin-top:10px"><b>'+nf(sinCero)+' códigos sin ceros a la izquierda</b> (11204 en vez de 011204).<div class="sp"></div><button class="btn sm" data-act="maecorregir">Corregir códigos</button></div>':'')+
+    '<label class="lb">Mostrar</label><div class="seg vseg">'+fl.map(function(f){ return '<span class="chip btn2 '+(MA.f===f[0]?"sel":"")+'" data-act="mafiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>'+
+    '<label class="lb">Buscar</label><input type="search" id="maq" placeholder="Referencia o descripción" value="'+esc(MA.q)+'">'+
+    '<div class="sp"></div><div class="card gold"><b>Cargar maestro (Excel)</b><p class="small muted">Columnas: Referencia, Descripción, Código de barras, Factor U.M., GRUPO SHOPPER, LINEA PROVEEDOR, 001-PESO INDIVIDUAL y dimensiones. También acepta la hoja MAESTRO con U.M. y Desc. U.M. Completa lo que falte sin borrar lo existente.</p><button class="btn block" data-act="maecargar">Cargar maestro</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="maestro">Descargar plantilla</button></div>'+
+    '<div class="sp"></div><button class="btn ghost block" data-act="maerefrescar">Actualizar desde la nube</button>';
+  var main='<p class="small muted">'+nf(lista.length)+' productos'+(lista.length>MAN?' (se muestran '+MAN+')':'')+'</p>'+lista.slice(0,MAN).map(function(k){ var d=S.mae[k], f=faltasMae(d);
+    return '<button class="task" data-act="maeabrir" data-k="'+esc(k)+'"><div class="tt"><b class="mono">'+esc(k)+'</b>'+(f.length?'<span class="chip st-nov">Falta: '+esc(f.slice(0,3).join(", "))+(f.length>3?"…":"")+'</span>':'<span class="chip st-ok">Completo</span>')+'</div><div class="sub">'+esc(d.d||"(sin descripción)")+'</div><div class="mini"><span class="chip">Emp. '+esc(d.u||1)+'</span>'+(d.empaqueNuevo?'<span class="chip st-nov">Cambió a '+esc(d.empaqueNuevo)+'</span>':"")+(d.g?'<span class="chip">'+esc(d.g)+'</span>':'')+(d.l?'<span class="chip">'+esc(d.l)+'</span>':'')+'</div></button>'; }).join("")+
+    (lista.length>MAN?'<button class="btn ghost block" data-act="maemas">Ver 100 más</button>':'')+(lista.length?'':'<div class="empty">No hay productos con este filtro.</div>');
+  layoutAdmin(cab,side,main); enlazarBuscador("maq",function(v){ MA.q=v; MAN=100; });
+};
+ACT.maemas=function(){ MAN+=100; render(); };
+ACT.maeborrar=async function(){
+  var ls=maeFiltrados(); if(!ls.length){ toast("No hay productos en la lista"); return; } var todos=ls.length===Object.keys(S.mae).length;
+  if(!pedirBorrado("¿Eliminar "+nf(ls.length)+" producto"+(ls.length>1?"s":"")+" del maestro?"+(todos?" Es TODO el maestro.":"")+" Si vuelven a aparecer en un listado se registrarán de nuevo como productos incompletos.",ls.length)) return;
+  try{ toast("Eliminando…",8000); await borrarIdsDe("maestro",ls,todos); ls.forEach(function(k){ delete S.mae[k]; }); LS.set("ops_mae",S.mae); toast(nf(ls.length)+" productos eliminados"); render(); }
+  catch(e){ toast("No se pudo eliminar: "+(e.message||e),4500); }
+};
+
+/* ===== Ofertas ===== */
+var OFN=150;
+function ofFiltradas(){
+  var q=normH(OF.q);
+  return ofertasLista().filter(function(k){
+    if(OF.filtro==="sincomp"&&S.ofr[k]) return false;
+    if((OF.filtro==="sin"||OF.filtro==="virtual"||OF.filtro==="no")&&ofCatTxt(k)!==OF.filtro) return false;
+    return !q||normH(k+" "+ofDesc(k)).indexOf(q)>=0;
+  });
+}
+VIEWS.ofertas=function(){
+  topbar("Ofertas",subtituloUsuario(),true);
+  var todas=ofertasLista(), v=0,s=0,sc=0;
+  todas.forEach(function(k){ var t=ofCatTxt(k); if(t==="virtual") v++; else if(t!=="no") s++; if(!S.ofr[k]) sc++; });
+  var lista=ofFiltradas();
+  var cab='<h1>Ofertas</h1><p class="muted small">Base única de las 5 ciudades. Toda oferta que aparece en un listado se registra aquí sola. Las <b>virtuales</b> se desglosan en sus componentes al crear la sesión; las demás se dejan como producto armado. Una ciudad puede tener una excepción.</p>';
+  var fl=[["todas","Todas"],["sin","Sin categorizar"],["virtual","Virtuales"],["no","No virtuales"],["sincomp","Sin composición ("+sc+")"]];
+  var side='<div class="kpis kp2"><div class="kpi"><b>'+nf(todas.length)+'</b><span>Ofertas</span></div><div class="kpi"><b>'+nf(v)+'</b><span>Virtuales</span></div><div class="kpi"><b>'+nf(s)+'</b><span>Sin categorizar</span></div></div>'+
+    '<div class="sp"></div><button class="btn gold block" data-act="ofnueva">+ Agregar oferta</button><div class="sp"></div><button class="btn ghost block" data-act="ofexportar">Descargar la lista (Excel)</button><div class="sp"></div><button class="btn ghost block" data-act="ofexpsincomp">Descargar las que faltan componentes</button><div class="sp"></div>'+BTN_BORRAR+'data-act="ofborrar" '+(lista.length?'':'disabled')+'>Eliminar las '+nf(lista.length)+' de la lista</button>'+
+    '<label class="lb">Mostrar</label><div class="seg vseg">'+fl.map(function(f){ return '<span class="chip btn2 '+(OF.filtro===f[0]?"sel":"")+'" data-act="offiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>'+
+    '<label class="lb">Buscar</label><input type="search" id="ofq" placeholder="Código o descripción" value="'+esc(OF.q)+'">'+
+    '<div class="sp"></div><div class="card gold"><b>Composición de ofertas</b><p class="small muted">Excel con Referencia, Desc. Item, Referencia comp., Desc. item comp. y Cantidad Requerida (o OFERTA / COMPONENTE / CANT). Reemplaza la composición de las ofertas que vengan en el archivo y registra las nuevas.</p><button class="btn block" data-act="ofcomp">Cargar composición (Excel)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="composicion">Descargar plantilla</button></div>'+
+    '<div class="card gold"><b>Categorías de ofertas</b><p class="small muted">Excel con Referencia, Descripcion y Virtual (SI/NO); opcionalmente una columna por ciudad con la excepción SI/NO.</p><button class="btn block" data-act="ofcat">Cargar categorías (Excel)</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="categorias">Descargar plantilla</button></div>'+
+    '<div class="card gold"><b>Categorizar desde el Excel de zonas</b><p class="small muted">Usa la columna Desglosar_Oferta (SI/NO) para categorizar las que aún no tienen categoría.</p><button class="btn block" data-act="ofmarcas">Cargar desde Excel de zonas</button></div>';
+  var main='<p class="small muted">'+nf(lista.length)+' ofertas'+(lista.length>OFN?' (se muestran '+OFN+')':'')+'</p>'+lista.slice(0,OFN).map(function(k){
+    var c=S.ofr[k], t=ofCatTxt(k), ciu=CIUDADES.map(function(ci){ var d=desgloseDe(k,ci.co); return ci.nombre.slice(0,3).toUpperCase()+' '+(d.v===true?'✔':d.v===false?'✖':'·'); }).join(' · ');
+    return '<button class="task" data-act="ofabrir" data-k="'+esc(k)+'"><div class="tt"><b class="mono">'+esc(k)+'</b><span class="chip '+(t==="virtual"?"st-ok":t==="no"?"":"st-nov")+'">'+(t==="virtual"?"Virtual":t==="no"?"No virtual":"Sin categorizar")+'</span></div><div class="sub">'+esc(ofDesc(k))+'</div><div class="mini"><span class="chip">'+(c?'✔ '+c.comps.length+' componentes':'✖ sin composición')+'</span></div><div class="small muted" style="margin-top:4px">Desglosa: '+ciu+'</div></button>'; }).join("")+
+    (lista.length>OFN?'<button class="btn ghost block" data-act="ofmas">Ver 150 más</button>':'')+(lista.length?'':'<div class="empty">No hay ofertas con este filtro.</div>');
+  layoutAdmin(cab,side,main); enlazarBuscador("ofq",function(x){ OF.q=x; OFN=150; });
+};
+ACT.ofmas=function(){ OFN+=150; render(); };
+/* Eliminar ofertas: su categoria, su composicion y sus excepciones por ciudad */
+async function borrarOfertas(codes,todos){
+  if(todos){ await DB.delFilter("ofertas",{}); await DB.delFilter("ofertas_cat",{}); await DB.delFilter("ofertas_desglose",{}); }
+  else for(var i=0;i<codes.length;i+=10){ await Promise.all(codes.slice(i,i+10).reduce(function(a,k){ a.push(DB.del("ofertas",k),DB.del("ofertas_cat",k)); CIUDADES.forEach(function(c){ a.push(DB.del("ofertas_desglose",c.co+"-"+k)); }); return a; },[])); }
+  codes.forEach(function(k){ delete S.ofr[k]; delete S.cat[k]; Object.keys(S.desg).forEach(function(co){ if(S.desg[co]) delete S.desg[co][k]; }); });
+}
+ACT.ofborrar=async function(){
+  var ls=ofFiltradas(); if(!ls.length){ toast("No hay ofertas en la lista"); return; } var todos=ls.length===ofertasLista().length;
+  if(!pedirBorrado("¿Eliminar "+nf(ls.length)+" oferta"+(ls.length>1?"s":"")+" (categoría, composición y excepciones por ciudad)?"+(todos?" Son TODAS las ofertas.":"")+" La composición y la categoría las comparte Semáforos.",ls.length)) return;
+  try{ toast("Eliminando…",8000); await borrarOfertas(ls,todos); toast(nf(ls.length)+" ofertas eliminadas"); render(); }
+  catch(e){ toast("No se pudo eliminar: "+(e.message||e),4500); }
+};
+
+/* ===== Matriz: eliminar las de la lista o toda la matriz de la ciudad ===== */
+ACT.mtborrar=async function(){
+  var co=coActual(), M=S.matriz[co]||{}, ls=matrizFiltrada(co); if(!ls.length){ toast("No hay referencias en la lista"); return; } var todos=ls.length===Object.keys(M).length;
+  if(!pedirBorrado("¿Eliminar "+nf(ls.length)+" referencia"+(ls.length>1?"s":"")+" de la matriz de "+((ciudadPorCo(co)||{}).nombre||co)+"?"+(todos?" Es TODA la matriz de la ciudad.":"")+" La matriz la comparte Semáforos.",ls.length)) return;
+  try{ toast("Eliminando…",8000); await borrarIdsDe("matrices/"+co+"/lineas",ls,todos); ls.forEach(function(k){ delete M[k]; }); toast(nf(ls.length)+" referencias eliminadas de la matriz"); render(); }
+  catch(e){ toast("No se pudo eliminar: "+(e.message||e),4500); }
+};
+
+/* ===== Vehiculos ===== */
+function vehFiltrados(){
+  var q=normH(VH.q);
+  return S.vehList.filter(function(v){ return !q||normH(v.d.placa+" "+(v.d.conductor||"")).indexOf(q)>=0; }).sort(function(a,b){ var x=faltasVeh(a.d).length?0:alertaVeh(a.d)?1:2, y=faltasVeh(b.d).length?0:alertaVeh(b.d)?1:2; return (x-y)||String(a.d.placa).localeCompare(String(b.d.placa)); });
+}
+VIEWS.vehiculos=function(){
+  topbar("Vehículos",subtituloUsuario(),true);
+  var co=coActual(), ciudad=(ciudadPorCo(co)||{nombre:co}).nombre, r=resumenVeh(), lista=vehFiltrados();
+  var cab=selectorCiudad("vhco")+'<h1>Vehículos · '+esc(ciudad)+'</h1><p class="muted small">Se alimenta solo: cada placa que llega en una planilla se registra aquí y queda pendiente hasta completar sus datos. Lo que guardes aquí no se vuelve a preguntar.</p>'+(VH.err?'<div class="hint warn">'+esc(VH.err)+'</div>':'');
+  var side='<div class="kpis kp2"><div class="kpi"><b>'+nf(S.vehList.length)+'</b><span>Vehículos</span></div><div class="kpi"><b>'+nf(r.inc)+'</b><span>Incompletos</span></div><div class="kpi"><b>'+nf(r.al)+'</b><span>Por vencer</span></div></div>'+
+    '<div class="sp"></div><button class="btn gold block" data-act="vhnuevo">+ Agregar vehículo</button><div class="sp"></div>'+BTN_BORRAR+'data-act="vhborrar" '+(lista.length?'':'disabled')+'>Eliminar los '+nf(lista.length)+' de la lista</button>'+
+    '<label class="lb">Buscar</label><input type="search" id="vhq" placeholder="Placa o conductor" value="'+esc(VH.q)+'">'+
+    '<div class="hint warn" style="margin-top:10px"><b>Dato personal:</b> el nombre del conductor es un dato personal. No se pide la cédula. Mientras la base de pruebas siga abierta, evita registrar más datos personales de los necesarios.</div>';
+  var main=alertaVehHtml()+lista.map(function(v){ var d=v.d, f=faltasVeh(d), s=estadoDoc(d.soat), t=estadoDoc(d.tecno), m=estadoDoc(d.manip);
+    return '<button class="task" data-act="vhabrir" data-placa="'+esc(d.placa)+'"><div class="tt"><b class="mono">'+esc(d.placa)+'</b>'+(f.length?'<span class="chip st-nov">Faltan datos</span>':'<span class="chip st-ok">Completo</span>')+'</div><div class="sub">'+esc(d.conductor||"(sin conductor)")+(d.kg?' · '+nf(d.kg)+' kg':'')+(d.m3?' · '+nf(d.m3,1)+' m³':'')+'</div><div class="mini"><span class="chip '+s.cls+'">SOAT: '+s.t+'</span><span class="chip '+t.cls+'">Tecno: '+t.t+'</span><span class="chip '+m.cls+'">Manip.: '+m.t+'</span></div></button>'; }).join("")+
+    (lista.length?'':'<div class="empty">'+(VH.cargando?"Cargando vehículos…":"Aún no hay vehículos. Se agregan solos al cargar las planillas, o usa «+ Agregar vehículo».")+'</div>');
+  layoutAdmin(cab,side,main); enlazarBuscador("vhq",function(x){ VH.q=x; });
+};
+ACT.vhborrar=async function(){
+  var co=coActual(), ls=vehFiltrados(); if(!ls.length){ toast("No hay vehículos en la lista"); return; } var todos=ls.length===S.vehList.length;
+  if(!pedirBorrado("¿Eliminar "+nf(ls.length)+" vehículo"+(ls.length>1?"s":"")+" de "+((ciudadPorCo(co)||{}).nombre||co)+"?"+(todos?" Son TODOS los de la ciudad.":"")+" Si vuelven a llegar en una planilla se registrarán de nuevo, sin datos.",ls.length)) return;
+  try{ toast("Eliminando…",6000); await borrarIdsDe("vehiculos",ls.map(function(v){ return v.id; }),todos,{"datos->>co":"eq."+co}); toast(nf(ls.length)+" vehículos eliminados"); await cargarVeh(); }
+  catch(e){ toast("No se pudo eliminar: "+(e.message||e),4500); }
+};
+
+/* ===== Rutas por poblacion ===== */
+function rutasFiltradas(){
+  var q=normH(RT.q);
+  return Object.keys(S.pobl).filter(function(k){ var p=S.pobl[k]; if(RT.f==="sin"&&p.ruta) return false; return !q||normH(p.ciudad+" "+p.ruta).indexOf(q)>=0; }).sort(function(a,b){ return String(S.pobl[a].ciudad).localeCompare(String(S.pobl[b].ciudad)); });
+}
+VIEWS.rutas=function(){
+  topbar("Rutas por población",subtituloUsuario(),true);
+  var ks=Object.keys(S.pobl), sin=ks.filter(function(k){ return !S.pobl[k].ruta; }).length, lista=rutasFiltradas();
+  var cab='<h1>Rutas por población</h1><p class="muted small">Cada población pertenece a una ruta. Se usa para filtrar el listado de separación. Las poblaciones nuevas que lleguen en los archivos se agregan solas y quedan pendientes de ruta.</p>';
+  var side='<div class="kpis kp2"><div class="kpi"><b>'+nf(ks.length)+'</b><span>Poblaciones</span></div><div class="kpi"><b>'+nf(new Set(ks.map(function(k){ return S.pobl[k].ruta; }).filter(Boolean)).size)+'</b><span>Rutas</span></div><div class="kpi"><b>'+nf(sin)+'</b><span>Sin ruta</span></div></div>'+
+    '<div class="sp"></div><button class="btn gold block" data-act="rtnuevo">+ Agregar población</button><div class="sp"></div>'+BTN_BORRAR+'data-act="rtborrar" '+(lista.length?'':'disabled')+'>Eliminar las '+nf(lista.length)+' de la lista</button>'+
+    '<label class="lb">Mostrar</label><div class="seg vseg">'+[["todas","Todas"],["sin","Sin ruta ("+sin+")"]].map(function(f){ return '<span class="chip btn2 '+(RT.f===f[0]?"sel":"")+'" data-act="rtfiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>'+
+    '<label class="lb">Buscar</label><input type="search" id="rtq" placeholder="Población o ruta" value="'+esc(RT.q)+'">'+
+    '<div class="sp"></div><div class="card gold"><b>Cargar poblaciones y rutas (Excel)</b><p class="small muted">Columnas: Ciudad, Ruta (la hoja POBLACIONES de la macro).</p><button class="btn block" data-act="rtcargar">Cargar Excel</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="poblaciones">Descargar plantilla</button></div>';
+  var main='<p class="small muted">'+nf(lista.length)+' poblaciones</p>'+lista.slice(0,300).map(function(k){ var p=S.pobl[k]; return '<button class="task" data-act="rtabrir" data-k="'+esc(k)+'"><div class="tt"><b>'+esc(p.ciudad)+'</b>'+(p.ruta?'<span class="chip st-ok">'+esc(p.ruta)+'</span>':'<span class="chip st-nov">Sin ruta</span>')+'</div></button>'; }).join("")+(lista.length?'':'<div class="empty">No hay poblaciones'+(RT.f==="sin"?" sin ruta":"")+'.</div>');
+  layoutAdmin(cab,side,main); enlazarBuscador("rtq",function(x){ RT.q=x; });
+};
+ACT.rtborrar=async function(){
+  var ls=rutasFiltradas(); if(!ls.length){ toast("No hay poblaciones en la lista"); return; } var todos=ls.length===Object.keys(S.pobl).length;
+  if(!pedirBorrado("¿Eliminar "+nf(ls.length)+" población"+(ls.length>1?"es":"")+" con su ruta?"+(todos?" Son TODAS.":"")+" Si vuelven a llegar en un listado se registrarán de nuevo, sin ruta.",ls.length)) return;
+  try{ toast("Eliminando…",6000); await borrarIdsDe("poblaciones",ls,todos); ls.forEach(function(k){ delete S.pobl[k]; }); toast(nf(ls.length)+" poblaciones eliminadas"); render(); }
+  catch(e){ toast("No se pudo eliminar: "+(e.message||e),4500); }
+};
+
+/* ===== Usuarios (no se eliminan a si mismo ni a los administradores en bloque) ===== */
+function usFiltrados(){
+  var q=normH(US.q);
+  return S.users.filter(function(u){ return (US.f==="todos"||(US.f==="activos")===(u.activo!==false))&&(!q||normH(u.nombre+" "+(u.cargo||"")).indexOf(q)>=0); });
+}
+VIEWS.usuarios=function(){
+  topbar("Usuarios y roles",subtituloUsuario(),true);
+  var cnt={administrador:0,coordinador:0,operario:0}, inact=0; S.users.forEach(function(u){ if(u.activo!==false) cnt[u.rol]=(cnt[u.rol]||0)+1; else inact++; });
+  var lista=usFiltrados(), borrables=lista.filter(function(u){ return u.id!==S.me.id&&u.rol!=="administrador"; });
+  var cab='<h1>Usuarios y roles</h1><p class="muted small">Los mismos usuarios y claves de Semáforos: un solo ingreso para todas las apps. Toca un usuario para editarlo, desactivarlo, eliminarlo o restablecer su clave.</p>';
+  var side='<div class="kpis kp2"><div class="kpi"><b>'+cnt.administrador+'</b><span>Administradores</span></div><div class="kpi"><b>'+cnt.coordinador+'</b><span>Coordinadores</span></div><div class="kpi"><b>'+cnt.operario+'</b><span>Auxiliares</span></div></div>'+
+    '<div class="sp"></div><button class="btn gold block" data-act="usnuevo">+ Agregar usuario</button><div class="sp"></div>'+BTN_BORRAR+'data-act="usborrar" '+(borrables.length?'':'disabled')+'>Eliminar los '+nf(borrables.length)+' de la lista</button><p class="small muted">En bloque no se eliminan administradores ni tu propio usuario.</p>'+
+    '<label class="lb">Mostrar</label><div class="seg vseg">'+[["activos","Activos"],["inactivos","Inactivos ("+inact+")"],["todos","Todos"]].map(function(f){ return '<span class="chip btn2 '+(US.f===f[0]?"sel":"")+'" data-act="usfiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>'+
+    '<label class="lb">Buscar</label><input type="search" id="usq" placeholder="Nombre o cargo" value="'+esc(US.q)+'">';
+  var main="", hay=false;
+  CIUDADES.concat([{co:"REG",nombre:REGIONAL.nombre}]).forEach(function(c){
+    var l=lista.filter(function(u){ return u.co===c.co; }).sort(function(a,b){ var o={administrador:0,coordinador:1,operario:2}; return (o[a.rol]-o[b.rol])||String(a.nombre).localeCompare(String(b.nombre)); });
+    if(!l.length) return; hay=true;
+    main+='<p class="grp-titulo">'+esc(c.nombre)+(c.co!=="REG"?' · C.O. '+c.co:'')+'</p>'+l.map(function(u){
+      var cl=u.rol==="administrador"?'<span class="chip">Clave propia</span>':US.claves==null?'':tieneClaveU(u)?'<span class="chip st-ok">Clave creada</span>':'<span class="chip st-nov">Sin clave</span>';
+      return '<div class="user-row" data-act="usabrir" data-id="'+esc(u.id)+'" style="'+(u.activo===false?'opacity:.55':'')+'"><div class="avatar">'+esc(iniciales(u.nombre))+'</div><div class="grow"><div class="nm">'+esc(u.nombre)+(u.id===S.me.id?' <small>(tú)</small>':'')+'</div><div class="rl">'+esc(ROL_LABEL[u.rol]||u.rol)+(u.cargo?' · '+esc(u.cargo):'')+'</div></div>'+(u.activo===false?'<span class="chip">Inactivo</span>':cl)+'</div>';
+    }).join("");
+  });
+  if(!hay) main='<div class="empty">No hay usuarios con este filtro.</div>';
+  layoutAdmin(cab,side,main); enlazarBuscador("usq",function(x){ US.q=x; });
+};
+ACT.usborrar=async function(){
+  var ls=usFiltrados().filter(function(u){ return u.id!==S.me.id&&u.rol!=="administrador"; }); if(!ls.length){ toast("No hay usuarios para eliminar en la lista"); return; }
+  if(!pedirBorrado("¿Eliminar "+nf(ls.length)+" usuario"+(ls.length>1?"s":"")+"? Pierden el acceso a todas las apps, incluido Semáforos. Lo que ya registraron no se borra.",ls.length)) return;
+  try{ toast("Eliminando…",6000); await borrarIdsDe("usuarios",ls.map(function(u){ return u.id; }),false); await cargarUsuarios(); toast(nf(ls.length)+" usuarios eliminados"); render(); }
+  catch(e){ toast("No se pudo eliminar: "+(e.message||e),4500); }
+};
+
 /* ===== 99_boot.js ===== */
 /* ---------- eventos, carga al entrar a cada pantalla, actualizacion automatica y arranque ---------- */
 document.addEventListener("click",function(e){
