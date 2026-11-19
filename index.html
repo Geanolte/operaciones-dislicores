@@ -413,7 +413,7 @@ function esOferta(ref,desc){
   for(var co in S.desg){ if(S.desg[co][r]!==undefined) return true; }
   return /^OF[\s.\d]/i.test(String(desc||"").trim());
 }
-var A_PLA={num:["numero"],fecha:["fecha"],fac:["numero factura"],veh:["vehiculo"],est:["estado"],notas:["notas"]};
+var A_PLA={num:["numero","nro documento planilla"],fecha:["fecha","fecha planilla"],fac:["numero factura","nro documento"],veh:["vehiculo"],est:["estado"],notas:["notas"],co:["c.o.","c.o","c.o planilla","c.o. planilla"],tipo:["tipo docto. planilla"]};
 /* Vehiculo esporadico: en la planilla va con placa "000" y la placa real se escribe en Notas */
 function placaDeNotas(txt){ var m=/(?:^|[^A-Z0-9])([A-Z]{3})[\s\-]?(\d{3}|\d{2}[A-Z])(?![A-Z0-9])/.exec(String(txt||"").toUpperCase().replace(/_/g," ")); return m?(m[1]+m[2]):""; }
 var A_MTZ={ref:["referencia"],desc:["descripcion","desc. item","descripcion item"],zona:["zona","piso"],seq:["secuencia"],flag:["desglosar_oferta","desglosar oferta","desglosar"],ubic:["ubicacion"],aux:["auxiliar","operario","alistador"]};
@@ -789,7 +789,7 @@ VIEWS.home=function(){
     HOME.sem.forEach(function(x){ h+=semCardHtml(x,""); });
     act.forEach(function(t){ h+=tareaHtml(t,'data-act="abrirtarea" data-id="'+esc(t.id)+'"'); });
     var veh=HOME.libres.filter(function(x){ return x.datos.modulo==="despacho"; }), sinA=HOME.libres.filter(function(x){ return x.datos.modulo==="alistamiento"; });
-    if(veh.length) h+='<h2>Vehículos disponibles para cargue</h2>'+veh.map(function(x){ var dd=x.datos; return '<div class="card gold"><b>'+esc(dd.titulo)+'</b><div class="small muted">'+nf(dd.total)+' referencias · escoge este vehículo si lo vas a cargar</div><div class="sp"></div><button class="btn gold block" data-act="tomarveh" data-id="'+esc(x.id)+'">Cargar este vehículo</button></div>'; }).join("");
+    if(veh.length) h+='<h2>Vehículos disponibles para cargue</h2><p class="small muted">Si un vehículo lleva dos planillas (por ejemplo PLF y PLI), marca <b>Unir</b> en ambas y cárgalas juntas. Quien lo haga primero cierra la opción.</p>'+veh.map(function(x){ var dd=x.datos; return '<div class="card gold"><b>'+esc(dd.titulo)+'</b><div class="small muted">'+nf(dd.total)+' referencias · escoge este vehículo si lo vas a cargar</div><div class="sp"></div><div class="row"><button class="btn gold grow" data-act="tomarveh" data-id="'+esc(x.id)+'">Cargar este vehículo</button><button class="btn ghost" data-act="unitog" data-id="'+esc(x.id)+'">'+(UNI.sel[x.id]?'☑ Unir':'☐ Unir')+'</button></div></div>'; }).join("")+unirBarraHtml();
     if(sinA.length) h+='<h2>Referencias sin asignar</h2>'+sinA.map(function(x){ var dd=x.datos, hh=(dd.ok||0)+(dd.parc||0)+(dd.no||0); return '<div class="card"><b>'+esc(dd.titulo)+'</b><div class="small muted">'+nf(dd.total)+' referencias sin dueño · '+hh+' separadas. Puedes separar las que quieras buscándolas por código o por palabras.</div>'+barra(dd.total?hh/dd.total:0,true)+'<div class="sp"></div><button class="btn block" data-act="abrirlibre" data-id="'+esc(x.id)+'">Abrir y separar</button></div>'; }).join("");    if(!act.length&&!HOME.sem.length&&!HOME.libres.length) h+='<div class="empty">'+(HOME.cargando?"Buscando tus tareas…":"No tienes tareas pendientes.<br>Cuando tu coordinador te asigne una, aparecerá aquí.")+'</div>';
     if(fin.length){ h+='<h2>Completadas</h2>'; fin.slice(0,8).forEach(function(t){ h+=tareaHtml(t,'data-act="abrirtarea" data-id="'+esc(t.id)+'"'); }); }
     h+='<h2>Mi dispositivo</h2><div class="card"><label class="lb" style="margin-top:0">Cómo escanea</label><div class="row"><span class="chip btn2 '+(S.modoScan==="camara"?"sel":"")+'" data-act="scan" data-m="camara">Cámara</span><span class="chip btn2 '+(S.modoScan==="lector"?"sel":"")+'" data-act="scan" data-m="lector">Pistola / lector</span></div>'+
@@ -1733,10 +1733,10 @@ ACT.vhplaca=function(el,d){ hojaVehiculo(d("p")); };
 
 /* ===== 60_ops.js ===== */
 /* ---------- tareas: consultas livianas (sin la lista de referencias) ---------- */
-var TASK_LITE="id,sid:datos->>sid,modulo:datos->>modulo,titulo:datos->>titulo,co:datos->>co,fecha:datos->>fecha,asignadoId:datos->>asignadoId,asignadoNombre:datos->>asignadoNombre,estado:datos->>estado,total:datos->>total,ok:datos->>ok,parc:datos->>parc,no:datos->>no,creadoEn:datos->>creadoEn,actualizadoEn:datos->>actualizadoEn";
+var TASK_LITE="id,sid:datos->>sid,modulo:datos->>modulo,titulo:datos->>titulo,co:datos->>co,fecha:datos->>fecha,asignadoId:datos->>asignadoId,asignadoNombre:datos->>asignadoNombre,estado:datos->>estado,total:datos->>total,ok:datos->>ok,parc:datos->>parc,no:datos->>no,creadoEn:datos->>creadoEn,actualizadoEn:datos->>actualizadoEn,placa:datos->>placa,planillas:datos->>planillas";
 async function tareasDe(filter,o){
   var rows=await DB.list("ops_tareas",Object.assign({filter:filter,all:true,order:"actualizado.desc",select:TASK_LITE},o||{}));
-  return rows.map(function(r){ var d={modulo:r.modulo,sid:r.sid,titulo:r.titulo,co:r.co,fecha:r.fecha,asignadoId:r.asignadoId||"",asignadoNombre:r.asignadoNombre,estado:r.estado,total:+r.total||0,ok:+r.ok||0,parc:+r.parc||0,no:+r.no||0,creadoEn:r.creadoEn,actualizadoEn:r.actualizadoEn}; return {id:r.id,datos:d}; });
+  return rows.map(function(r){ var d={modulo:r.modulo,sid:r.sid,titulo:r.titulo,co:r.co,fecha:r.fecha,asignadoId:r.asignadoId||"",asignadoNombre:r.asignadoNombre,estado:r.estado,total:+r.total||0,ok:+r.ok||0,parc:+r.parc||0,no:+r.no||0,creadoEn:r.creadoEn,actualizadoEn:r.actualizadoEn,placa:r.placa||"",planillas:(function(){ try{ return r.planillas?JSON.parse(r.planillas):[]; }catch(e){ return []; } })()}; return {id:r.id,datos:d}; });
 }
 function tareaDoc(modulo,sid,titulo,co,aux,items,extra){
   var c=ciudadPorCo(co)||{nombre:co}, id=sid+"--"+(aux||"SIN");
@@ -1939,6 +1939,12 @@ async function cargarDesp(){
   }catch(e){ toast(e.message||"Sin conexión"); }
   DP.cargando=false; var c=cur(); if(c&&(c.v==="desp"||c.v==="placa")) render();
 }
+/* El cargue que contiene a una planilla (sola o unida con otras del mismo vehiculo) */
+function tareaDePlanilla(pl){
+  var k=Object.keys(DP.tareas), et=etiquetaPl(pl);
+  for(var i=0;i<k.length;i++){ var t=DP.tareas[k[i]], ps=t.datos.planillas||[]; if(t.datos.sid==="D"+pl.num||ps.indexOf(et)>=0) return t; }
+  return null;
+}function etiquetaPl(pl){ return (pl.tipo||'PLF')+' '+pl.num; }
 function planillasCalc(){
   var D=S.desp, out=[];
   D.planillas.forEach(function(pl){
@@ -1955,8 +1961,10 @@ VIEWS.desp=function(){
   topbar("Despacho",subtituloUsuario(),true);
   var D=S.desp, mi=Object.keys(S.mae).length;
   var h=selectorCiudad("dpco")+'<h1>Despacho</h1><div class="hint">El coordinador decide qué va en cada vehículo: la app recibe la <b>planilla</b> (placa + facturas), arma el listado consolidado de cada vehículo, lo envía al auxiliar de cargue (segundo alistamiento) y al final dice si se aprovechó la capacidad.</div>';
-  h+='<div class="card gold"><b>1. Planilla de despacho</b><p class="small muted">Excel con Número, Fecha, Número factura, Vehículo (y Estado). Se descarta todo lo demás.</p><div class="row"><span class="chip ok">'+nf(D.planillas.length)+' planillas</span></div><div class="sp"></div><button class="btn block" data-act="cargapla">Cargar planilla (Excel)</button></div>';
+  h+='<div class="card gold"><b>1. Planillas de despacho (PLF y PLI)</b><p class="small muted">Puedes elegir varios archivos a la vez: las planillas de facturas (PLF) y las de remisiones (PLI). Solo se toman las de tu centro de operación. Se descarta todo lo demás.</p><div class="row"><span class="chip ok">'+nf(D.planillas.length)+' planillas</span></div><div class="sp"></div><button class="btn block" data-act="cargapla">Cargar planilla (Excel)</button></div>';
   h+='<div class="card gold"><b>2. Líneas de las facturas</b><p class="small muted">Excel(s) con Nro documento, Referencia, Descripción, Código de barras, Factor U.M. y Cantidad. Puede elegir varios archivos a la vez.</p><div class="row"><span class="chip ok">'+nf(Object.keys(D.lineas).length)+' facturas con líneas</span></div>'+D.archivos.map(function(a){ return '<div class="small muted" style="margin-top:6px">• '+esc(a.n)+' — '+a.f+' facturas</div>'; }).join("")+'<div class="sp"></div><button class="btn block" data-act="cargafac">Cargar facturas (Excel)</button></div>';
+  var libres=Object.keys(DP.tareas).map(function(k){ return DP.tareas[k]; }).filter(function(t){ return t.datos.modulo==="despacho"&&!t.datos.asignadoId; });
+  if(libres.length) h+='<h2>Cargues disponibles (sin tomar)</h2><p class="small muted">Si un vehículo lleva dos planillas (PLF y PLI), marca <b>Unir</b> en ambas. Quien lo haga primero, tú o el auxiliar, cierra la opción.</p>'+libres.map(function(t){ return '<div class="card"><div class="row"><b class="grow">'+esc(t.datos.titulo)+'</b><button class="btn ghost" data-act="unitog" data-id="'+esc(t.id)+'">'+(UNI.sel[t.id]?'☑ Unir':'☐ Unir')+'</button></div></div>'; }).join("")+unirBarraHtml();
   if(!mi) h+='<div class="hint warn">Sin maestro: el peso y volumen no se calcularán. Cárguelo en Administración → Maestro de productos.</div>';
   if(D.planillas.length){
     var cal=planillasCalc(), fechas=uniq(cal.map(function(c){ return c.pl.fecha; })).sort();
@@ -1965,7 +1973,7 @@ VIEWS.desp=function(){
     h+='<div class="card"><b>Vehículos de las planillas</b><p class="small muted">La capacidad (kg), la cubicación (m³) y los datos del conductor se guardan una vez por placa y no se vuelven a preguntar. Se administran en Administración → Vehículos.</p>'+placas.map(function(p){ var vv=S.veh[p]||{}, fl=faltasVeh(vv), c=S.cap[p]||{}; return '<div class="row" style="margin-top:8px;align-items:center"><span class="mono grow"><b>'+p+'</b> <small class="muted">'+esc(vv.conductor||"sin conductor")+(c.kg?' · '+nf(c.kg)+' kg':'')+(c.m3?' · '+nf(c.m3,1)+' m³':'')+'</small></span><span class="chip '+(fl.length?"st-nov":"st-ok")+'">'+(fl.length?"Faltan datos":"Completo")+'</span><button class="btn ghost sm" data-act="vhplaca" data-p="'+p+'">'+(fl.length||!(c.kg||c.m3)?"Completar":"Ver")+'</button></div>'; }).join("")+'</div>';
     cal.forEach(function(c,i){
       if(DF.fecha&&c.pl.fecha!==DF.fecha) return;
-      var u=c.v.u, bc=c.v.k==="des"?"w":c.v.k==="sob"?"b":c.v.k==="bien"?"u":"", tk=DP.tareas["D"+c.pl.num];
+      var u=c.v.u, bc=c.v.k==="des"?"w":c.v.k==="sob"?"b":c.v.k==="bien"?"u":"", tk=tareaDePlanilla(c.pl);
       h+='<button class="tile" data-act="abrirpl" data-i="'+i+'" style="flex-wrap:wrap"><div class="ic">⛟</div><div style="flex:1;min-width:0"><b>'+esc(c.pl.placa)+' · planilla '+esc(c.pl.num)+'</b><span>'+c.pl.fecha+' · '+c.conLin+' de '+c.pl.facs.length+' facturas cargadas · '+nf(c.c.und)+' u. · '+nf(c.c.cj)+' cajas</span></div><span class="chip '+c.v.cls+'">'+c.v.t+(u!=null?" "+pct(u):"")+'</span>'+(tk?'<div style="width:100%;margin-top:8px" class="row"><span class="chip info">Cargue: '+esc(tk.datos.asignadoNombre||"")+'</span>'+estadoChip(tk.datos.estado)+'<span class="chip">'+(tk.datos.ok+tk.datos.parc+tk.datos.no)+'/'+tk.datos.total+'</span></div>':'')+(u!=null?'<div class="bar '+bc+'" style="width:100%;margin-top:8px"><i style="width:'+Math.min(100,Math.round(u*100))+'%"></i></div>':'')+'</button>';
     });
     h+='<p class="small muted">Las planillas con cobertura menor a '+pct(S.umb.cob)+' figuran como "Datos incompletos" porque faltan facturas por cargar.</p>';
@@ -1978,7 +1986,7 @@ VIEWS.desp=function(){
 var PL={i:0};
 VIEWS.placa=function(){
   var cal=planillasCalc()[PL.i]; if(!cal){ back(); return; }
-  var pl=cal.pl, c=cal.c, v=cal.v, cap=cal.cap, tk=DP.tareas["D"+pl.num];
+  var pl=cal.pl, c=cal.c, v=cal.v, cap=cal.cap, tk=tareaDePlanilla(pl);
   topbar(pl.placa+" · planilla "+pl.num,pl.fecha,true);
   var h=(pl.sinPlaca?'<div class="hint warn">Vehículo esporádico (placa 000) sin placa en Notas. Escríbela para evaluar la capacidad.</div>':pl.esporadico?'<div class="hint">Vehículo esporádico: placa tomada de Notas.</div>':'')+((pl.sinPlaca||pl.esporadico)?'<button class="btn ghost sm" data-act="placambiar">'+(pl.sinPlaca?'Escribir la placa':'Cambiar la placa')+'</button><div class="sp"></div>':'')+'<div class="card gold"><div class="row"><b class="grow">Uso de capacidad</b><span class="chip '+v.cls+'">'+v.t+(v.u!=null?" "+pct(v.u):"")+'</span></div>';
   if(cap&&(cap.kg>0||cap.m3>0)){
@@ -2005,36 +2013,43 @@ ACT.abrirpl=function(el,d){ PL.i=+d("i"); go("placa"); };
 ACT.dfecha=function(el,d){ DF.fecha=d("f"); render(); };
 ACT.enviarcargue=async function(){
   var aux=$("#cgsel").value;
-  var cal=planillasCalc()[PL.i], pl=cal.pl, sid="D"+pl.num, co=coActual();
+  var cal=planillasCalc()[PL.i], pl=cal.pl, sid="D"+pl.num, co=coActual(); if(tareaDePlanilla(pl)){ toast("Esta planilla ya está en un cargue publicado"); await cargarDesp(); return; }
   var items=cal.items.map(function(i){ return Object.assign({},i,{tipos:"FAC",seq:0,zona:""}); });
   /* facturas del vehiculo con su cliente (solo el nombre) y sus lineas, para cargar factura por factura */
   var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:cl[f]||"",l:S.desp.lineas[f]}; });
   try{
-    var doc=tareaDoc("despacho",sid,"Cargue "+pl.placa+" · planilla "+pl.num,co,aux,items,{placa:pl.placa,planilla:pl.num,facturas:facturas,modo:""});
+    var doc=tareaDoc("despacho",sid,"Cargue "+pl.placa+" · "+etiquetaPl(pl),co,aux,items,{placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
     await DB.set("ops_tareas",doc.id,doc.datos); toast(aux?"Asignado a "+nombreDe(aux):"Vehículo publicado: los auxiliares de "+(ciudadPorCo(co)||{nombre:co}).nombre+" lo ven disponible"); await cargarDesp();
   }catch(e){ toast("No se pudo enviar: "+(e.message||e)); }
 };ACT.borrardesp=function(){ if(confirm("¿Borrar las planillas y facturas cargadas en este dispositivo? Las capacidades y tareas ya enviadas no se tocan.")){ S.desp={planillas:[],lineas:{},clientes:{},archivos:[]}; LS.set("ops_desp",S.desp); render(); } };
 ACT.cargapla=function(){
-  elegirExcel(function(wb){
-    var t=tablaDe(wb,["numero factura"],"Sheet1")||tablaDe(wb,["vehiculo"]); if(!t){ toast("No se encontró la planilla (Número factura / Vehículo)"); return; }
-    var m=colMap(t.hdr,A_PLA); if(m.num<0||m.fac<0||m.veh<0){ toast("La planilla debe traer Número, Número factura y Vehículo"); return; }
-    var mp={},orden=[],anul=0;
-    t.rows.forEach(function(r){
-      var num=String(r[m.num]||"").trim(), fac=String(r[m.fac]||"").trim(); if(!num||!fac) return;
-      if(m.est>=0&&normH(r[m.est])==="anulado"){ anul++; return; }
-      var f=r[m.fecha], fecha=typeof f==="number"?new Date(Math.round((f-25569)*86400000)).toISOString().slice(0,10):String(f||"").slice(0,10);
-      var placa=String(r[m.veh]||"").trim().toUpperCase().replace(/\s+/g," "), esp=/^0+$/.test(placa), nota=m.notas>=0?String(r[m.notas]||"").trim():"";
-      if(!placa||(/^\d+$/.test(placa)&&!esp)) placa="SIN VEHÍCULO";
-      var pl=mp[num]; if(!pl){ pl=mp[num]={num:num,fecha:fecha,placa:placa,facs:[],esp:esp,notas:""}; orden.push(num); }
-      if(esp&&nota&&pl.notas.indexOf(nota)<0) pl.notas+=(pl.notas?" ":"")+nota;
-      if(pl.facs.indexOf(fac)<0) pl.facs.push(fac);
+  elegirExcels(function(lista){
+    var co=coActual(), anul=0, ajenas=0, errs=[], mp={}, orden=[];
+    (S.desp.planillas||[]).forEach(function(p){ mp[p.num]=p; orden.push(p.num); });
+    lista.forEach(function(it){
+      var t=tablaDe(it.wb,["numero factura","nro documento planilla"],"Sheet1")||tablaDe(it.wb,["vehiculo"]); if(!t){ errs.push(it.f.name+": no se encontró la planilla"); return; }
+      var m=colMap(t.hdr,A_PLA); if(m.num<0||m.fac<0||m.veh<0){ errs.push(it.f.name+": debe traer número de planilla, documento y vehículo"); return; }
+      var nuevas={}, nord=[];
+      t.rows.forEach(function(r){
+        var num=String(r[m.num]||"").trim(), fac=String(r[m.fac]||"").trim(); if(!num||!fac||/^gran total/i.test(String(r[0]||""))) return;
+        if(m.co>=0&&String(r[m.co]==null?"":r[m.co]).trim()!==co){ ajenas++; return; }
+        if(m.est>=0&&normH(r[m.est])==="anulado"){ anul++; return; }
+        var f=r[m.fecha], fecha=typeof f==="number"?new Date(Math.round((f-25569)*86400000)).toISOString().slice(0,10):String(f||"").slice(0,10);
+        var placa=String(r[m.veh]||"").trim().toUpperCase().replace(/\s+/g," "), esp=/^0+$/.test(placa), nota=m.notas>=0?String(r[m.notas]||"").trim():"";
+        if(!placa||(/^\d+$/.test(placa)&&!esp)) placa="SIN VEHÍCULO";
+        var tipo=(m.tipo>=0&&String(r[m.tipo]||"").trim())||((/^(PLI|PLF)/i.exec(num)||[])[1]||"PLF").toUpperCase();
+        var pl=nuevas[num]; if(!pl){ pl=nuevas[num]={num:num,tipo:tipo,fecha:fecha,placa:placa,facs:[],esp:esp,notas:""}; nord.push(num); }
+        if(esp&&nota&&pl.notas.indexOf(nota)<0) pl.notas+=(pl.notas?" ":"")+nota;
+        if(pl.facs.indexOf(fac)<0) pl.facs.push(fac);
+      });
+      nord.forEach(function(k){ var pl=nuevas[k]; if(pl.esp){ var pp=placaDeNotas(pl.notas); if(pp){ pl.placaNota=pp; pl.placa=pp; pl.esporadico=true; } else { pl.placa="000"; pl.sinPlaca=true; } pl.notas=""; } delete pl.esp; if(!mp[k]) orden.push(k); mp[k]=pl; });
     });
-    orden.forEach(function(k){ var pl=mp[k]; if(!pl.esp) return; var pp=placaDeNotas(pl.notas); if(pp){ pl.placaNota=pp; pl.placa=pp; pl.esporadico=true; } else { pl.placa="000"; pl.sinPlaca=true; } pl.notas=""; delete pl.esp; });
-    S.desp.planillas=orden.map(function(k){ return mp[k]; }).sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:(+x.num)-(+y.num); });
-    registrarVehiculos(S.desp.planillas).catch(function(){}); LS.set("ops_desp",S.desp); toast(S.desp.planillas.length+" planillas"+(anul?" ("+anul+" anuladas omitidas)":"")); render();
+    if(!orden.length){ toast(errs[0]||"No hay planillas de tu centro de operación en el archivo",4500); return; }
+    S.desp.planillas=orden.map(function(k){ return mp[k]; }).sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:String(x.num).localeCompare(String(y.num),undefined,{numeric:true}); });
+    registrarVehiculos(S.desp.planillas).catch(function(){}); LS.set("ops_desp",S.desp);
+    toast(S.desp.planillas.length+" planillas ("+S.desp.planillas.filter(function(p){ return p.tipo==="PLI"; }).length+" PLI)"+(ajenas?" · "+nf(ajenas)+" filas de otros C.O. omitidas":"")+(anul?" · "+anul+" anuladas omitidas":"")+(errs.length?" · "+errs.join("; "):""),5000); render();
   });
-};
-ACT.cargafac=function(){
+};ACT.cargafac=function(){
   elegirExcels(function(lista){
     var tot=0,dupT=0,nArch=0,err=[];
     lista.forEach(function(it){
@@ -2067,6 +2082,42 @@ ACT.sesrenombrar=async function(){
   catch(e){ toast("No se pudo renombrar: "+(e.message||e)); }
 };
 
+/* ---- unir cargues del mismo vehiculo (por ejemplo la PLF 001 y la PLI 003): lo puede hacer el coordinador o el auxiliar; quien lo haga primero cierra la opcion ---- */
+var UNI={sel:{}};
+function planillasDeTarea(d){ return (d.planillas&&d.planillas.length)?d.planillas:["PLF "+String(d.sid||"").replace(/^D/,"")]; }
+ACT.unitog=function(el,d){ var id=d("id"); if(UNI.sel[id]) delete UNI.sel[id]; else UNI.sel[id]=1; render(); };
+function nSelUni(){ return Object.keys(UNI.sel).length; }
+function unirBarraHtml(){
+  var n=nSelUni(); if(n<2) return n===1?'<p class="small muted">Marca otro cargue del mismo vehículo para unirlos.</p>':'';
+  return '<button class="btn gold block" data-act="unirsel">Unir los '+n+' cargues seleccionados</button><div class="sp"></div>';
+}
+async function unirCargues(ids,tomar){
+  var rs=[];
+  for(var i=0;i<ids.length;i++){ var r=await DB.get("ops_tareas",ids[i]); if(!r||r.datos.asignadoId){ toast("Alguien ya tomó o unió uno de estos cargues. Actualiza la lista."); return false; } rs.push(r); }
+  var placas=uniq(rs.map(function(r){ return r.datos.placa||""; }));
+  if(placas.length>1&&!confirm("Estos cargues tienen placas distintas ("+placas.join(", ")+"). ¿Unirlos de todos modos?")) return false;
+  var mp={}, fac=[], vistas={}, pls=[];
+  rs.forEach(function(r){
+    (r.datos.items||[]).forEach(function(a){ var x=mp[a[0]]; if(!x) mp[a[0]]=a.slice(); else x[4]+=a[4]; });
+    (r.datos.facturas||[]).forEach(function(f){ if(!vistas[f.n]){ vistas[f.n]=1; fac.push(f); } });
+    pls=pls.concat(planillasDeTarea(r.datos));
+  });
+  var items=Object.keys(mp).sort(ordenRef).map(function(k){ return mp[k]; }), base=rs[0].datos, sid="G"+Date.now().toString(36)+rid(2);
+  var nd=Object.assign({},base,{sid:sid,titulo:"Cargue "+(placas[0]||"")+" · "+pls.join(" + "),items:items,facturas:fac,planillas:pls,planilla:"",total:items.length,e:[],ok:0,parc:0,no:0,estado:"pendiente",modo:"",asignadoId:tomar?S.me.id:"",asignadoNombre:tomar?S.me.nombre:"Sin asignar",tomadoEn:tomar?ahora():null,creadoEn:ahora(),actualizadoEn:ahora(),iniciadoEn:null,finalizadoEn:null});
+  await DB.set("ops_tareas",sid+"--SIN",nd);
+  for(var j=0;j<ids.length;j++){ await DB.del("ops_tareas",ids[j]); }
+  UNI.sel={}; return {id:sid+"--SIN",titulo:nd.titulo};
+}
+ACT.unirsel=async function(){
+  var ids=Object.keys(UNI.sel); if(ids.length<2){ toast("Marca al menos dos cargues"); return; }
+  var tomar=S.me.rol==="operario";
+  try{
+    toast("Uniendo cargues…",3000); var r=await unirCargues(ids,tomar);
+    if(!r){ UNI.sel={}; if(tomar) cargarHome(); else cargarDesp(); return; }
+    toast("Cargues unidos: "+r.titulo,4500);
+    if(tomar) abrirTarea(r.id,false); else cargarDesp();
+  }catch(e){ toast("No se pudieron unir: "+(e.message||e)); }
+};
 /* ===== 65_listado.js ===== */
 /* ---------- rutas por poblacion y listado de separacion impreso (para bodegas sin RF ni matriz formal) ---------- */
 function claveCiu(c){ return normH(c).replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); }
