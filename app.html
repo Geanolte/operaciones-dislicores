@@ -399,7 +399,7 @@ function colMap(hdr,alias){
   Object.keys(alias).forEach(function(k){ m[k]=-1; for(var j=0;j<h.length;j++){ if(alias[k].indexOf(h[j])>=0){ m[k]=j; break; } } });
   return m;
 }
-var A_LIN={ref:["referencia"],desc:["desc. item","descripcion","descripcion item","desc item"],bar:["codigo barra principal","codigo barras principal","codigo de barras principal","cod ean","codigo de barras"],ue:["factor u.m. emp.","factor u.m. empaque","u.m. emp.","u.m. empaque","u.e","unidad empaque"],cant:["cantidad","cant. comprom.","cant. comprometida","salidas (inv.)","cant"],bod:["bodega"],ciu:["desc. ciudad","ciudad"],pes:["001-peso individual"],ali:["001-alto individual"],ani:["001-ancho individual"],pri:["001-profundidad individual"],ale:["001-alto embalaje"],ane:["001-ancho embalaje"],pre:["001-profundidad embalaje"],grupo:["grupo shopper"],linea:["linea proveedor"],doc:["nro documento","documento","numero factura","factura"],cli:["cliente resumen factura","cliente"]};
+var A_LIN={ref:["referencia"],desc:["desc. item","descripcion","descripcion item","desc item"],bar:["codigo barra principal","codigo barras principal","codigo de barras principal","cod ean","codigo de barras"],ue:["factor u.m. emp.","factor u.m. empaque","u.m. emp.","u.m. empaque","u.e","unidad empaque"],cant:["cantidad","cant. comprom.","cant. comprometida","salidas (inv.)","cant"],bod:["bodega"],ciu:["desc. ciudad","ciudad"],pes:["001-peso individual"],ali:["001-alto individual"],ani:["001-ancho individual"],pri:["001-profundidad individual"],ale:["001-alto embalaje"],ane:["001-ancho embalaje"],pre:["001-profundidad embalaje"],grupo:["grupo shopper"],linea:["linea proveedor"],doc:["nro documento","documento","numero factura","factura"],cli:["cliente resumen factura","cliente"],tdoc:["tipo docto."]};
 var A_MAE={ref:["referencia"],desc:["descripcion","desc. item"],bar:["codigo de barras","codigo barra principal"],ue:["factor u.m.","factor u.m. emp."],grupo:["grupo shopper"],linea:["linea proveedor"],peso:["001-peso individual"],vi:["001-volumen individual"],ae:["001-ancho embalaje"],he:["001-alto embalaje"],pe:["001-profundidad embalaje"]};
 /* Composicion: acepta el formato de la app de picking / ERP (Referencia, Desc. Item, Referencia comp., Desc. item comp., Cantidad Requerida) y el formato de la macro */
 var A_OF={of:["codigo ofera","codigo oferta","oferta","referencia"],odesc:["descripcion oferta","descripcion de la oferta","desc. item","desc item"],comp:["codigo producto","componente","referencia comp.","referencia comp","referencia componente"],cdesc:["descripcion producto","descripcion componente","desc. item comp.","desc. item comp","desc item comp","descripcion item comp"],cant:["cantidad oferta","cant.","cant","cantidad","cantidad requerida"]};
@@ -434,16 +434,18 @@ function tipoDe(hdr,docs){
 function parseLineas(t){
   var m=colMap(t.hdr,A_LIN);
   if(m.ref<0||m.cant<0) throw new Error("El archivo debe traer las columnas Referencia y Cantidad.");
-  var out=[],docs={},primero="";
+  var out=[],docs={},primero="",excl=0;
   t.rows.forEach(function(r){
     var ref=normRef(r[m.ref]); if(!ref) return;
+    /* remisiones: solo se alistan SM, TBV y TCA (documentos con salidas); entradas y otros tipos se omiten */
+    if(m.tdoc>=0){ var td=String(r[m.tdoc]||"").trim().toUpperCase(); if(td&&!/^(SM|TBV|TCA)$/.test(td)){ excl++; return; } }
     var c=parseDbl(r[m.cant]); if(!(c>0)) return;
     var doc=m.doc>=0?String(r[m.doc]||"").trim():""; if(doc){ docs[doc]=1; if(!primero) primero=doc; }
     var dm=function(a,b,c){ return (m[a]>=0&&m[b]>=0&&m[c]>=0)?(parseDbl(r[m[a]])*parseDbl(r[m[b]])*parseDbl(r[m[c]])):0; };
     out.push({p:m.pes>=0?parseDbl(r[m.pes]):0,vi:dm("ali","ani","pri"),ve:dm("ale","ane","pre"),ref:ref,desc:m.desc>=0?String(r[m.desc]||"").trim():"",bar:m.bar>=0?normBar(r[m.bar]):"",ue:m.ue>=0?ueDe(r[m.ue]):0,cant:c,bod:m.bod>=0?String(r[m.bod]||"").trim():"",ciu:m.ciu>=0?String(r[m.ciu]||"").trim():"",grupo:m.grupo>=0?String(r[m.grupo]||"").trim():"",linea:m.linea>=0?String(r[m.linea]||"").trim():"",doc:doc});
   });
   var tipo=tipoDe(t.hdr,[primero]); out.forEach(function(l){ l.t=tipo; });
-  return {lineas:out,docs:Object.keys(docs).length,cols:m,tipo:tipo};
+  return {lineas:out,docs:Object.keys(docs).length,cols:m,tipo:tipo,excl:excl};
 }
 function parseMaestro(t){
   var m=colMap(t.hdr,A_MAE); if(m.ref<0) throw new Error("El maestro debe traer la columna Referencia.");
@@ -1305,9 +1307,9 @@ function faltasMae(d){
   if(!(d.p>0)) f.push("peso"); if(!(d.vi>0||d.ve>0)) f.push("volumen"); return f;
 }
 function resumenPendientes(co){
-  var r={ofSin:0,ofSinComp:0,maeInc:0,mtzSin:null};
+  var r={ofSin:0,ofSinComp:0,maeInc:0,maeEmp:0,mtzSin:null};
   try{ ofertasLista().forEach(function(k){ var c=S.cat[k]; if(!c||c.virtual==null) r.ofSin++; if(c&&c.virtual===true&&!S.ofr[k]) r.ofSinComp++; }); }catch(e){}
-  Object.keys(S.mae).forEach(function(k){ if(faltasMae(S.mae[k]).length) r.maeInc++; });
+  Object.keys(S.mae).forEach(function(k){ if(faltasMae(S.mae[k]).length) r.maeInc++; if(S.mae[k].empaqueNuevo) r.maeEmp++; });
   var M=S.matriz[co]; if(M){ r.mtzSin=0; Object.keys(M).forEach(function(k){ if(!M[k].auxiliarId&&!esVirtual(k)) r.mtzSin++; }); }
   return r;
 }
@@ -1316,6 +1318,7 @@ function pendientesHtml(){
   if(esAdmin()){
     if(r.ofSin) it.push(['ofertas','sin',r.ofSin+' ofertas sin categorizar']);
     if(r.ofSinComp) it.push(['ofertas','sincomp',r.ofSinComp+' ofertas virtuales sin composición']);
+    if(r.maeEmp) it.push(['maestro','emp',nf(r.maeEmp)+' productos con cambio de unidad de empaque']);
     if(r.maeInc) it.push(['maestro','inc',nf(r.maeInc)+' productos con datos incompletos']);
   }
   var cs=esAdmin()?Object.keys(S.pobl).filter(function(k){ return !S.pobl[k].ruta; }).length:0; if(cs) it.push(['rutas','sin',cs+' poblaciones sin ruta']);
@@ -1336,19 +1339,19 @@ VIEWS.maestro=function(){
   h+='<div class="kpis"><div class="kpi"><b>'+nf(ks.length)+'</b><span>Productos</span></div><div class="kpi"><b>'+nf(c.inc)+'</b><span>Incompletos</span></div><div class="kpi"><b>'+nf(ks.length-c.inc)+'</b><span>Completos</span></div></div>';
   var sinCero=ks.filter(function(k){ return /^\d{1,5}$/.test(k); }).length;
   if(sinCero) h+='<div class="hint warn" style="margin-top:10px"><b>'+nf(sinCero)+' productos tienen el código sin ceros a la izquierda</b> (por ejemplo 11204 en vez de 011204), por eso no coinciden con los listados y quedan incompletos.<div class="sp"></div><button class="btn sm" data-act="maecorregir">Corregir códigos</button></div>';
-  var fl=[["todos","Todos"],["inc","Incompletos ("+nf(c.inc)+")"],["desc","Sin descripción ("+nf(c.desc)+")"],["barras","Sin barras ("+nf(c.barras)+")"],["gl","Sin grupo/línea ("+nf(c.gl)+")"],["pv","Sin peso/volumen ("+nf(c.pv)+")"]];
+  var nEmp=ks.filter(function(k){ return S.mae[k].empaqueNuevo; }).length; var fl=[["todos","Todos"],["emp","Cambio de empaque ("+nEmp+")"],["inc","Incompletos ("+nf(c.inc)+")"],["desc","Sin descripción ("+nf(c.desc)+")"],["barras","Sin barras ("+nf(c.barras)+")"],["gl","Sin grupo/línea ("+nf(c.gl)+")"],["pv","Sin peso/volumen ("+nf(c.pv)+")"]];
   h+='<div class="seg" style="margin-top:10px">'+fl.map(function(f){ return '<span class="chip btn2 '+(MA.f===f[0]?"sel":"")+'" data-act="mafiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>';
   h+='<input type="search" id="maq" placeholder="Buscar referencia o descripción" value="'+esc(MA.q)+'" style="margin-top:8px">';
   var q=normH(MA.q);
   var lista=ks.filter(function(k){
     var d=S.mae[k], f=faltasMae(d);
-    if(MA.f==="inc"&&!f.length) return false; if(MA.f==="desc"&&f.indexOf("descripción")<0) return false; if(MA.f==="barras"&&f.indexOf("barras")<0) return false;
+    if(MA.f==="emp"&&!d.empaqueNuevo) return false; if(MA.f==="inc"&&!f.length) return false; if(MA.f==="desc"&&f.indexOf("descripción")<0) return false; if(MA.f==="barras"&&f.indexOf("barras")<0) return false;
     if(MA.f==="gl"&&f.indexOf("grupo")<0&&f.indexOf("línea")<0) return false; if(MA.f==="pv"&&f.indexOf("peso")<0&&f.indexOf("volumen")<0) return false;
     return !q||normH(k+" "+(d.d||"")).indexOf(q)>=0;
   }).sort(ordenRef);
   h+='<p class="small muted">'+nf(lista.length)+' productos'+(lista.length>100?' (se muestran los primeros 100: usa el buscador)':'')+'</p><button class="btn ghost sm" data-act="maeexportar">Descargar la lista (Excel)</button>';
   h+=lista.slice(0,100).map(function(k){ var d=S.mae[k], f=faltasMae(d);
-    return '<button class="task" data-act="maeabrir" data-k="'+esc(k)+'"><div class="tt"><b class="mono">'+esc(k)+'</b>'+(f.length?'<span class="chip st-nov">Falta: '+esc(f.slice(0,3).join(", "))+(f.length>3?"…":"")+'</span>':'<span class="chip st-ok">Completo</span>')+'</div><div class="sub">'+esc(d.d||"(sin descripción)")+'</div><div class="mini"><span class="chip">Emp. '+esc(d.u||1)+'</span>'+(d.g?'<span class="chip">'+esc(d.g)+'</span>':'')+(d.l?'<span class="chip">'+esc(d.l)+'</span>':'')+'</div></button>'; }).join("");
+    return '<button class="task" data-act="maeabrir" data-k="'+esc(k)+'"><div class="tt"><b class="mono">'+esc(k)+'</b>'+(f.length?'<span class="chip st-nov">Falta: '+esc(f.slice(0,3).join(", "))+(f.length>3?"…":"")+'</span>':'<span class="chip st-ok">Completo</span>')+'</div><div class="sub">'+esc(d.d||"(sin descripción)")+'</div><div class="mini"><span class="chip">Emp. '+esc(d.u||1)+'</span>'+(d.empaqueNuevo?'<span class="chip st-nov">Cambió a '+esc(d.empaqueNuevo)+'</span>':"")+(d.g?'<span class="chip">'+esc(d.g)+'</span>':'')+(d.l?'<span class="chip">'+esc(d.l)+'</span>':'')+'</div></button>'; }).join("");
   h+='<div class="sp"></div><button class="btn gold block" data-act="maenuevo">+ Agregar producto</button><div class="sp"></div>'+
     '<div class="card gold"><b>Cargar maestro (Excel)</b><p class="small muted">Columnas: Referencia, Descripción, Código de barras, Factor U.M., GRUPO SHOPPER, LINEA PROVEEDOR, 001-PESO INDIVIDUAL, 001-ANCHO/ALTO/PROFUNDIDAD EMBALAJE y 001-VOLUMEN INDIVIDUAL. También acepta la hoja MAESTRO con U.M. y Desc. U.M. (una fila por presentación). Completa lo que falte sin borrar lo existente.</p><button class="btn block" data-act="maecargar">Cargar maestro</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="maestro">Descargar plantilla</button></div>'+
     '<div class="sp"></div><button class="btn ghost block" data-act="maerefrescar">Actualizar desde la nube</button>';
@@ -1357,6 +1360,8 @@ VIEWS.maestro=function(){
 ACT.mafiltro=function(el,d){ MA.f=d("f"); render(); };
 function hojaProducto(k){
   var d=k?(S.mae[k]||{}):{}, nuevo=!k;
+  var alertEmp=d.empaqueNuevo?'<div class="hint warn" style="margin:8px 0"><b>Cambió la unidad de empaque.</b> El maestro dice <b>'+esc(d.u||1)+'</b> unidades por caja y el último listado trae <b>'+esc(d.empaqueNuevo)+'</b>. Solo afecta las sesiones nuevas; las ya creadas conservan sus cantidades.<div class="sp"></div><div class="row"><button class="btn gold grow" id="mpAcep">Aceptar '+esc(d.empaqueNuevo)+'</button><button class="btn ghost grow" id="mpMant">Mantener '+esc(d.u||1)+'</button></div></div>':"";
+  var histHtml=(d.histEmpaque&&d.histEmpaque.length)?'<p class="small muted">Historial de empaque: '+d.histEmpaque.slice(-4).map(function(h){ return esc(h.de)+" → "+esc(h.a)+" ("+esc(String(h.fecha||"").slice(0,10))+")"; }).join(" · ")+'</p>':"";
   var bg=abrirSheet('<h3>'+(nuevo?'Nuevo producto':esc(k))+'</h3>'+
     (nuevo?'<label class="lb">Referencia</label><input id="mpRef" type="text" autocapitalize="characters">':'')+
     '<label class="lb">Descripción</label><input id="mpD" type="text" value="'+esc(d.d||"")+'">'+
@@ -1365,12 +1370,25 @@ function hojaProducto(k){
     '<label class="lb">Grupo shopper</label><input id="mpG" type="text" value="'+esc(d.g||"")+'">'+
     '<label class="lb">Línea proveedor</label><input id="mpL" type="text" value="'+esc(d.l||"")+'">'+
     '<div class="row"><div class="grow"><label class="lb">Volumen individual</label><input id="mpVi" type="number" step="any" value="'+esc(d.vi||"")+'"></div><div class="grow"><label class="lb">Volumen embalaje</label><input id="mpVe" type="number" step="any" value="'+esc(d.ve||"")+'"></div></div>'+
-    '<div class="sp"></div><button class="btn gold block" id="mpOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="mpX">Cancelar</button>');
+    alertEmp+histHtml+'<div class="sp"></div><button class="btn gold block" id="mpOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="mpX">Cancelar</button>'+(nuevo?'':'<div class="sp"></div><button class="btn red block" id="mpDel">Eliminar producto</button>'));
   $("#mpX",bg).onclick=cerrarSheet;
+  var resolver=async function(acepta){
+    try{ var o=Object.assign({},d); if(acepta){ o.histEmpaque=(d.histEmpaque||[]).concat([{de:d.u,a:d.empaqueNuevo,fecha:ahora(),por:S.me.id}]); o.u=d.empaqueNuevo; } else { o.empaqueIgnorado=d.empaqueNuevo; } o.empaqueNuevo=0; o.actualizadoEn=ahora(); await DB.set("maestro",k,o); S.mae[k]=o; cerrarSheet(); toast(acepta?"Empaque actualizado a "+o.u:"Se mantiene el empaque de "+o.u); render(); }
+    catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
+  };
+  if($("#mpAcep",bg)) $("#mpAcep",bg).onclick=function(){ resolver(true); };
+  if($("#mpMant",bg)) $("#mpMant",bg).onclick=function(){ resolver(false); };
+  if($("#mpDel",bg)) $("#mpDel",bg).onclick=async function(){
+    var en=Object.keys(S.ofr).filter(function(x){ return (S.ofr[x].comps||[]).some(function(c){ return c.ref===k; }); }).length, enM=Object.keys(S.matriz).filter(function(co){ return S.matriz[co]&&S.matriz[co][k]; }).length;
+    if(!confirm("¿Eliminar el producto "+k+" del maestro?"+(en?"\n\nEs componente de "+en+" oferta(s): su desglose seguirá usando esa referencia sin sus datos.":"")+(enM?"\n\nEstá en la matriz de "+enM+" ciudad(es); allí se conserva.":"")+"\n\nSi vuelve a aparecer en un listado, se registrará de nuevo como producto incompleto.")) return;
+    try{ await DB.del("maestro",k); delete S.mae[k]; cerrarSheet(); toast("Producto "+k+" eliminado"); render(); }
+    catch(e){ toast("No se pudo eliminar: "+(e.message||e)); }
+  };
   $("#mpOk",bg).onclick=async function(){
     var ref=nuevo?($("#mpRef",bg).value||"").trim().toUpperCase():k; if(!ref){ toast("Escribe la referencia"); return; }
     var v=function(id){ return ($(id,bg).value||"").trim(); }, n=function(id){ var x=parseFloat(String($(id,bg).value).replace(",",".")); return x>0?x:0; };
     var o=Object.assign({},S.mae[ref]||{},{d:v("#mpD"),b:v("#mpB"),u:n("#mpU")||1,g:v("#mpG"),l:v("#mpL"),p:n("#mpP"),vi:n("#mpVi"),ve:n("#mpVe"),origen:(S.mae[ref]&&S.mae[ref].origen)||"manual",actualizadoEn:ahora()});
+    var pu=(S.mae[ref]||{}).u; if(S.mae[ref]&&pu&&o.u!==pu){ o.histEmpaque=(S.mae[ref].histEmpaque||[]).concat([{de:pu,a:o.u,fecha:ahora(),por:S.me.id}]); o.empaqueNuevo=0; }
     try{ await DB.set("maestro",ref,o); S.mae[ref]=o; cerrarSheet(); toast("Producto "+ref+" guardado"); render(); }
     catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
   };
@@ -1466,7 +1484,10 @@ async function registrarPendientes(items,co){
     var k=String(it.ref||"").toUpperCase(); if(!k||esOferta(k,it.desc)) return;
     var lim=function(x){ return x&&!/^SIN /i.test(x)?x:""; }, prev=S.mae[it.ref];
     if(!prev) nuevosM.push({id:it.ref,datos:{d:it.desc||"",b:it.bar||"",u:it.ue||1,g:lim(it.grupo),l:lim(it.linea),p:it.p||0,vi:it.vi||0,ve:it.ve||0,origen:"listado",creadoEn:ahora()}});
-    else { var c={}, ch=false; if(!prev.d&&it.desc){ c.d=it.desc; ch=true; } if(!prev.b&&it.bar){ c.b=it.bar; ch=true; } if((!prev.g||/^SIN /i.test(prev.g))&&lim(it.grupo)){ c.g=it.grupo; ch=true; } if((!prev.l||/^SIN /i.test(prev.l))&&lim(it.linea)){ c.l=it.linea; ch=true; } if(!(prev.p>0)&&it.p>0){ c.p=it.p; c.vi=it.vi||prev.vi||0; c.ve=it.ve||prev.ve||0; ch=true; } if(ch) rellenar.push({id:it.ref,datos:Object.assign({},prev,c)}); }
+    else { var c={}, ch=false, ue=it.ue>0?it.ue:0;
+      if(ue>1&&(!prev.u||prev.u<=1)){ c.u=ue; ch=true; }
+      else if(ue&&prev.u>1&&ue!==prev.u&&prev.empaqueIgnorado!==ue&&prev.empaqueNuevo!==ue){ c.empaqueNuevo=ue; c.empaqueDetectadoEn=ahora(); ch=true; }
+      else if(ue&&ue===prev.u&&prev.empaqueNuevo){ c.empaqueNuevo=0; ch=true; } if(!prev.d&&it.desc){ c.d=it.desc; ch=true; } if(!prev.b&&it.bar){ c.b=it.bar; ch=true; } if((!prev.g||/^SIN /i.test(prev.g))&&lim(it.grupo)){ c.g=it.grupo; ch=true; } if((!prev.l||/^SIN /i.test(prev.l))&&lim(it.linea)){ c.l=it.linea; ch=true; } if(!(prev.p>0)&&it.p>0){ c.p=it.p; c.vi=it.vi||prev.vi||0; c.ve=it.ve||prev.ve||0; ch=true; } if(ch) rellenar.push({id:it.ref,datos:Object.assign({},prev,c)}); }
     if(!M[it.ref]) nuevasL.push({id:it.ref,datos:{referencia:it.ref,descItem:it.desc||(prev&&prev.d)||"",zona:"",ubicacion:"",secuencia:0,auxiliarId:"",origen:"listado",actualizadoEn:ahora(),actualizadoPor:S.me?S.me.id:""}});
   });
   if(nuevosM.length||rellenar.length) await DB.setMany("maestro",nuevosM.concat(rellenar));
@@ -1508,7 +1529,7 @@ ACT.mtexportar=function(){
 ACT.maeexportar=function(){
   var q=normH(MA.q), ks=Object.keys(S.mae).filter(function(k){
     var d=S.mae[k], f=faltasMae(d);
-    if(MA.f==="inc"&&!f.length) return false; if(MA.f==="desc"&&f.indexOf("descripción")<0) return false; if(MA.f==="barras"&&f.indexOf("barras")<0) return false;
+    if(MA.f==="emp"&&!d.empaqueNuevo) return false; if(MA.f==="inc"&&!f.length) return false; if(MA.f==="desc"&&f.indexOf("descripción")<0) return false; if(MA.f==="barras"&&f.indexOf("barras")<0) return false;
     if(MA.f==="gl"&&f.indexOf("grupo")<0&&f.indexOf("línea")<0) return false; if(MA.f==="pv"&&f.indexOf("peso")<0&&f.indexOf("volumen")<0) return false;
     return !q||normH(k+" "+(d.d||"")).indexOf(q)>=0;
   }).sort(ordenRef);
@@ -1772,7 +1793,7 @@ ACT.alnueva=function(){ NUEVA={}; go("nueva"); };
 ACT.abrirses=function(el,d){ SESV={id:d("id"),cargando:true,err:"",ses:null,tareas:[]}; go("ses"); cargarSes(); };
 
 /* ---- nueva sesion: al cargar los archivos la sesion se crea sola (una por centro de operacion); los cambios se hacen despues sobre la sesion ---- */
-var NUEVA={};
+var NUEVA={}, EXCL=0;
 VIEWS.nueva=function(){
   topbar("Nueva sesión",subtituloUsuario(),true);
   var h='<h1>Nueva sesión</h1><div class="card gold"><b>Archivos de facturas, pedidos, requisiciones o remisiones</b><p class="small muted">Cargue todos los archivos del día, sin filtrar. La app reconoce el tipo de cada uno, descarta los datos de clientes, desglosa las ofertas según la base y <b>crea la sesión de inmediato</b>, repartida según la matriz. Si el archivo trae varias ciudades, crea una sesión por cada una. Después puede ajustar lo que haga falta dentro de la sesión e imprimir el listado de separación.</p><button class="btn block" data-act="nvarchivos" '+(NUEVA.creando?'disabled':'')+'>'+(NUEVA.creando?'Creando…':'Elegir Excel (uno o varios)')+'</button></div>';
@@ -1782,7 +1803,7 @@ VIEWS.nueva=function(){
 };
 ACT.nvarchivos=function(){
   elegirExcels(function(lista){
-    var todas=[],vistos={},omit=0,detalle=[],err=[];
+    var todas=[],vistos={},omit=0,detalle=[],err=[]; EXCL=0;
     lista.forEach(function(it){
       var t=tablaDe(it.wb,["referencia"],"DATOS"); if(!t){ err.push(it.f.name+": no se encontró la columna Referencia"); return; }
       var r; try{ r=parseLineas(t); }catch(x){ err.push(it.f.name+": "+x.message); return; }
@@ -1790,7 +1811,7 @@ ACT.nvarchivos=function(){
       var rep={},nRep=0; Object.keys(propios).forEach(function(dc){ if(vistos[dc]){ rep[dc]=1; nRep++; } });
       var aport=0; r.lineas.forEach(function(l){ if(l.doc&&rep[l.doc]) return; todas.push(l); aport++; });
       Object.keys(propios).forEach(function(dc){ vistos[dc]=1; });
-      omit+=nRep; detalle.push({n:it.f.name,l:aport,d:Object.keys(propios).length-nRep,t:r.tipo});
+      omit+=nRep; EXCL+=(r.excl||0); detalle.push({n:it.f.name,l:aport,d:Object.keys(propios).length-nRep,t:r.tipo});
     });
     if(!todas.length){ NUEVA={errores:err}; render(); toast(err[0]||"No hay líneas para cargar"); return; }
     crearSesiones(todas,detalle,omit,err);
@@ -1816,7 +1837,7 @@ async function crearSesiones(todas,detalle,omit,err){
     var ofn=creadas.reduce(function(s,x){ return s+(x.reg&&x.reg.matriz||0); },0), pm=creadas.reduce(function(s,x){ return s+(x.reg&&x.reg.maestro||0); },0);
     if(esAdmin()){ S.coSel=creadas[0].co; LS.setRaw("ops_cosel",S.coSel); S.matriz={}; }
     NUEVA={};
-    toast((creadas.length>1?creadas.length+" sesiones creadas (una por ciudad)":"Sesión creada")+(omit?" · "+omit+" documentos repetidos contados una vez":"")+(fuera?" · "+nf(fuera)+" líneas de otras ciudades omitidas":"")+(pm?" · "+pm+" productos nuevos al maestro":"")+(ofn?" · "+ofn+" referencias nuevas pendientes de asignar":""),6000);
+    toast((creadas.length>1?creadas.length+" sesiones creadas (una por ciudad)":"Sesión creada")+(omit?" · "+omit+" documentos repetidos contados una vez":"")+(EXCL?" · "+nf(EXCL)+" líneas omitidas (solo se alistan remisiones SM, TBV y TCA)":"")+(fuera?" · "+nf(fuera)+" líneas de otras ciudades omitidas":"")+(pm?" · "+pm+" productos nuevos al maestro":"")+(ofn?" · "+ofn+" referencias nuevas pendientes de asignar":""),6000);
     nav.pop();
     if(creadas.length===1){ SESV={id:creadas[0].sid,cargando:true,err:"",ses:null,tareas:[]}; go("ses"); cargarSes(); }
     else { go("ali"); cargarAli(); }
@@ -2057,7 +2078,7 @@ ACT.cargapla=function(){
       try{
         var r=parseLineas(t), m=r.cols; if(m.doc<0){ err.push(it.f.name+" (sin Nro documento)"); return; }
         var nuevas={},omit={},cnt=0,cli={}; S.desp.clientes=S.desp.clientes||{};
-        t.rows.forEach(function(row){ var ref=normRef(row[m.ref]), doc=String(row[m.doc]||"").replace(/\s+/g,""), cant=parseDbl(row[m.cant]); if(!ref||!doc||!(cant>0)) return; if(m.cli>=0&&!cli[doc]) cli[doc]=nombreCliente(row[m.cli]);
+        t.rows.forEach(function(row){ var ref=normRef(row[m.ref]), doc=String(row[m.doc]||"").replace(/\s+/g,""), cant=parseDbl(row[m.cant]); if(!ref||!doc||!(cant>0)) return; if(m.tdoc>=0){ var td=String(row[m.tdoc]||"").trim().toUpperCase(); if(td&&!/^(SM|TBV|TCA)$/.test(td)) return; } if(m.cli>=0&&!cli[doc]) cli[doc]=nombreCliente(row[m.cli]);
           if(S.desp.lineas[doc]){ omit[doc]=1; return; }
           (nuevas[doc]=nuevas[doc]||[]).push([ref,m.desc>=0?String(row[m.desc]||"").trim():"",m.bar>=0?normBar(row[m.bar]):"",m.ue>=0?ueDe(row[m.ue]):0,cant]); });
         Object.keys(nuevas).forEach(function(doc){ if(cli[doc]) S.desp.clientes[doc]=cli[doc]; var ls=nuevas[doc].map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],cant:a[4],bod:"",grupo:"",linea:"",doc:doc,t:"FAC"}; }); var dd=desglosar(ls,coActual()); S.desp.lineas[doc]=dd.lineas.map(function(l){ return [l.ref,l.desc,l.bar,l.ue,l.cant]; }); cnt++; });
