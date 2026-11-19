@@ -1757,7 +1757,7 @@ function hojaVehiculo(placa){
 /* Las placas nuevas que llegan en una planilla se registran solas (pendientes de datos) */
 async function registrarVehiculos(planillas){
   var co=coActual(), nv=[], vistos={};
-  planillas.forEach(function(p){ if(!plateOk(p.placa)||vistos[p.placa]||S.veh[p.placa]) return; vistos[p.placa]=1; nv.push({id:co+"-"+p.placa,datos:{co:co,placa:p.placa,incompleto:true,origen:"planilla",creadoEn:ahora()}}); });
+  planillas.forEach(function(p){ if((p.co&&p.co!==co)||!plateOk(p.placa)||vistos[p.placa]||S.veh[p.placa]) return; vistos[p.placa]=1; nv.push({id:co+"-"+p.placa,datos:{co:co,placa:p.placa,incompleto:true,origen:"planilla",creadoEn:ahora()}}); });
   if(!nv.length) return 0; await DB.setMany("vehiculos",nv); nv.forEach(function(n){ S.veh[n.datos.placa]=n.datos; S.vehList.push({id:n.id,d:n.datos}); }); return nv.length;
 }
 ACT.vhplaca=function(el,d){ hojaVehiculo(d("p")); };
@@ -1977,10 +1977,10 @@ function tareaDePlanilla(pl){
   var k=Object.keys(DP.tareas), et=etiquetaPl(pl);
   for(var i=0;i<k.length;i++){ var t=DP.tareas[k[i]], ps=t.datos.planillas||[]; if(t.datos.sid==="D"+pl.num||ps.indexOf(et)>=0) return t; }
   return null;
-}function etiquetaPl(pl){ return (pl.tipo||'PLF')+' '+pl.num; }
+}function etiquetaPl(pl){ return /^(PLI|PLF)/i.test(String(pl.num))?String(pl.num):(pl.tipo||'PLF')+' '+pl.num; }
 function planillasCalc(){
   var D=S.desp, out=[];
-  D.planillas.forEach(function(pl){
+  D.planillas.filter(function(p){ return !p.co||p.co===coActual(); }).forEach(function(pl){
     var mp={},conLin=0;
     pl.facs.forEach(function(f){ var ls=D.lineas[f]; if(!ls) return; conLin++; ls.forEach(function(a){ var k=a[0], m=S.mae[k]||{}; var it=mp[k]; if(!it){ it=mp[k]={ref:k,desc:a[1]||m.d||"",bar:a[2]||m.b||"",ue:a[3]>0?a[3]:(m.u||1),total:0,grupo:m.g||"SIN GRUPO",linea:m.l||"SIN LÍNEA"}; } it.total+=a[4]; }); });
     var items=Object.keys(mp).sort(ordenRef).map(function(k){ return mp[k]; });
@@ -1994,12 +1994,12 @@ VIEWS.desp=function(){
   topbar("Despacho",subtituloUsuario(),true);
   var D=S.desp, mi=Object.keys(S.mae).length;
   var h=selectorCiudad("dpco")+'<h1>Despacho</h1><div class="hint">El coordinador decide qué va en cada vehículo: la app recibe la <b>planilla</b> (placa + facturas), arma el listado consolidado de cada vehículo, lo envía al auxiliar de cargue (segundo alistamiento) y al final dice si se aprovechó la capacidad.</div>';
-  h+='<div class="card gold"><b>1. Planillas de despacho (PLF y PLI)</b><p class="small muted">Puedes elegir varios archivos a la vez: las planillas de facturas (PLF) y las de remisiones (PLI). Solo se toman las de tu centro de operación. Se descarta todo lo demás.</p><div class="row"><span class="chip ok">'+nf(D.planillas.length)+' planillas</span></div><div class="sp"></div><button class="btn block" data-act="cargapla">Cargar planilla (Excel)</button></div>';
+  h+='<div class="card gold"><b>1. Planillas de despacho (PLF y PLI)</b><p class="small muted">Puedes elegir varios archivos a la vez: las planillas de facturas (PLF) y las de remisiones (PLI). Solo se toman las de tu centro de operación. Se descarta todo lo demás.</p><div class="row"><span class="chip ok">'+nf(D.planillas.filter(function(p){ return !p.co||p.co===coActual(); }).length)+' planillas</span></div><div class="sp"></div><button class="btn block" data-act="cargapla">Cargar planilla (Excel)</button></div>';
   h+='<div class="card gold"><b>2. Líneas de las facturas</b><p class="small muted">Excel(s) con Nro documento, Referencia, Descripción, Código de barras, Factor U.M. y Cantidad. Puede elegir varios archivos a la vez.</p><div class="row"><span class="chip ok">'+nf(Object.keys(D.lineas).length)+' facturas con líneas</span></div>'+D.archivos.map(function(a){ return '<div class="small muted" style="margin-top:6px">• '+esc(a.n)+' — '+a.f+' facturas</div>'; }).join("")+'<div class="sp"></div><button class="btn block" data-act="cargafac">Cargar facturas (Excel)</button></div>';
   var libres=Object.keys(DP.tareas).map(function(k){ return DP.tareas[k]; }).filter(function(t){ return t.datos.modulo==="despacho"&&!t.datos.asignadoId; });
   if(libres.length) h+='<h2>Cargues disponibles (sin tomar)</h2><p class="small muted">Si un vehículo lleva dos planillas (PLF y PLI), marca <b>Unir</b> en ambas. Quien lo haga primero, tú o el auxiliar, cierra la opción.</p>'+libres.map(function(t){ return '<div class="card"><div class="row"><b class="grow">'+esc(t.datos.titulo)+'</b><button class="btn ghost" data-act="unitog" data-id="'+esc(t.id)+'">'+(UNI.sel[t.id]?'☑ Unir':'☐ Unir')+'</button></div></div>'; }).join("")+unirBarraHtml();
   if(!mi) h+='<div class="hint warn">Sin maestro: el peso y volumen no se calcularán. Cárguelo en Administración → Maestro de productos.</div>';
-  if(D.planillas.length){
+  if(D.planillas.some(function(p){ return !p.co||p.co===coActual(); })){
     var cal=planillasCalc(), fechas=uniq(cal.map(function(c){ return c.pl.fecha; })).sort();
     h+='<h2>Vehículos</h2><div class="tabs"><span class="chip btn2 '+(!DF.fecha?"sel":"")+'" data-act="dfecha" data-f="">Todas las fechas</span>'+fechas.map(function(f){ return '<span class="chip btn2 '+(DF.fecha===f?"sel":"")+'" data-act="dfecha" data-f="'+f+'">'+f.slice(5)+'</span>'; }).join("")+'</div>';
     var placas=uniq(cal.filter(function(c){ return plateOk(c.pl.placa); }).map(function(c){ return c.pl.placa; })).sort();
@@ -2046,7 +2046,7 @@ ACT.abrirpl=function(el,d){ PL.i=+d("i"); go("placa"); };
 ACT.dfecha=function(el,d){ DF.fecha=d("f"); render(); };
 ACT.enviarcargue=async function(){
   var aux=$("#cgsel").value;
-  var cal=planillasCalc()[PL.i], pl=cal.pl, sid="D"+pl.num, co=coActual(); if(tareaDePlanilla(pl)){ toast("Esta planilla ya está en un cargue publicado"); await cargarDesp(); return; }
+  var cal=planillasCalc()[PL.i], pl=cal.pl, sid="D"+pl.num, co=coActual(); if(tareaDePlanilla(pl)||(await DB.get("ops_tareas",sid+"--SIN"))){ toast("Esta planilla ya está en un cargue publicado"); await cargarDesp(); return; }
   var items=cal.items.map(function(i){ return Object.assign({},i,{tipos:"FAC",seq:0,zona:"",cemp:avisoEmpaque(i.ref)}); });
   /* facturas del vehiculo con su cliente (solo el nombre) y sus lineas, para cargar factura por factura */
   var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:cl[f]||"",l:S.desp.lineas[f]}; });
@@ -2071,7 +2071,7 @@ ACT.cargapla=function(){
         var placa=String(r[m.veh]||"").trim().toUpperCase().replace(/\s+/g," "), esp=/^0+$/.test(placa), nota=m.notas>=0?String(r[m.notas]||"").trim():"";
         if(!placa||(/^\d+$/.test(placa)&&!esp)) placa="SIN VEHÍCULO";
         var tipo=(m.tipo>=0&&String(r[m.tipo]||"").trim())||((/^(PLI|PLF)/i.exec(num)||[])[1]||"PLF").toUpperCase();
-        var pl=nuevas[num]; if(!pl){ pl=nuevas[num]={num:num,tipo:tipo,fecha:fecha,placa:placa,facs:[],esp:esp,notas:""}; nord.push(num); }
+        var pl=nuevas[num]; if(!pl){ pl=nuevas[num]={num:num,tipo:tipo,co:co,fecha:fecha,placa:placa,facs:[],esp:esp,notas:""}; nord.push(num); }
         if(esp&&nota&&pl.notas.indexOf(nota)<0) pl.notas+=(pl.notas?" ":"")+nota;
         if(pl.facs.indexOf(fac)<0) pl.facs.push(fac);
       });
@@ -2080,7 +2080,7 @@ ACT.cargapla=function(){
     if(!orden.length){ toast(errs[0]||"No hay planillas de tu centro de operación en el archivo",4500); return; }
     S.desp.planillas=orden.map(function(k){ return mp[k]; }).sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:String(x.num).localeCompare(String(y.num),undefined,{numeric:true}); });
     registrarVehiculos(S.desp.planillas).catch(function(){}); LS.set("ops_desp",S.desp);
-    toast(S.desp.planillas.length+" planillas ("+S.desp.planillas.filter(function(p){ return p.tipo==="PLI"; }).length+" PLI)"+(ajenas?" · "+nf(ajenas)+" filas de otros C.O. omitidas":"")+(anul?" · "+anul+" anuladas omitidas":"")+(errs.length?" · "+errs.join("; "):""),5000); render();
+    toast(S.desp.planillas.filter(function(p){ return p.co===co; }).length+" planillas de "+((ciudadPorCo(co)||{nombre:co}).nombre)+" ("+S.desp.planillas.filter(function(p){ return p.co===co&&p.tipo==="PLI"; }).length+" PLI)"+(ajenas?" · "+nf(ajenas)+" filas de otros C.O. omitidas":"")+(anul?" · "+anul+" anuladas omitidas":"")+(errs.length?" · "+errs.join("; "):""),5000); render();
   });
 };ACT.cargafac=function(){
   elegirExcels(function(lista){
