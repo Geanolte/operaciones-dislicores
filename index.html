@@ -2051,7 +2051,7 @@ VIEWS.placa=function(){
   h+='</div><div class="kpis"><div class="kpi"><b>'+cal.conLin+'/'+pl.facs.length+'</b><span>Facturas</span></div><div class="kpi"><b>'+nf(cal.items.length)+'</b><span>Referencias</span></div><div class="kpi"><b>'+nf(c.und)+'</b><span>Unidades</span></div><div class="kpi"><b>'+nf(c.cj)+'</b><span>Cajas</span></div><div class="kpi"><b>'+nf(c.su)+'</b><span>Sueltas</span></div><div class="kpi"><b>'+nf(c.kg)+'</b><span>kg</span></div><div class="kpi"><b>'+nf(c.m3,1)+'</b><span>m³</span></div></div>';
   h+=avisosCarga(c);
   h+='<h2>Segundo alistamiento (cargue)</h2>';
-  if(tk){ h+=tareaHtml(tk,'data-act="vertarea" data-id="'+esc(tk.id)+'"')+(tk.datos.asignadoId?'<p class="small muted">Para quitar a quien lo ejecuta, abre el cargue y usa «Quitar y dejar disponible».</p>':''); }
+  if(tk){ h+=tareaHtml(tk,'data-act="vertarea" data-id="'+esc(tk.id)+'"')+(tk.datos.asignadoId?'<div class="sp"></div><button class="btn ghost block" style="color:#c0392b;border-color:#c0392b" data-act="liberarpl">Quitar a '+esc(tk.datos.asignadoNombre||"")+' y dejar disponible</button><p class="small muted">Sirve aunque ya haya empezado: lo marcado se conserva y otro auxiliar lo continúa.</p>':''); }
   else if(!cal.items.length) h+='<p class="small muted">Esta planilla aún no tiene líneas cargadas.</p>';
   else { var ops=usuariosDe(coActual(),"operario"); h+='<div class="card"><b>Publicar para cargue</b><p class="small muted">Lo normal es dejarlo <b>disponible</b>: le aparece a todos los auxiliares de la bodega en «Vehículos disponibles para cargue» y cada uno escoge cuál despachar. Si prefieres, asígnalo a una persona.</p><label class="lb">Quién lo carga</label><div class="row"><select id="cgsel" class="grow"><option value="">Disponible para que cualquier auxiliar lo tome</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">Asignar a '+esc(u.nombre)+'</option>'; }).join("")+'</select><button class="btn gold sm" data-act="enviarcargue">Publicar</button></div><p class="small muted">Usted ve el avance aquí y en «Avance de tareas». El auxiliar decide si carga consolidado o factura por factura.</p></div>'; }
   h+='<h2>Listado consolidado</h2>'+cal.items.map(function(it){ return '<div class="line" style="cursor:default"><div style="min-width:0"><div class="r">'+esc(it.ref)+'</div><div class="d">'+esc(it.desc)+'</div><div class="row"><span class="chip info">'+esc(it.grupo)+'</span><span class="chip info">'+esc(it.linea)+'</span></div></div><div class="q">'+esc(fmtQty(it.total,it.ue))+'</div></div>'; }).join("");
@@ -2062,6 +2062,13 @@ ACT.placambiar=function(){
   var bg=abrirSheet('<h3>Placa del vehículo</h3><p class="small muted">Planilla '+esc(pl.num)+'. Para un vehículo esporádico la placa real se escribe en Notas; aquí puedes corregirla.</p><label class="lb">Placa (3 letras + 3 números)</label><input id="plP" type="text" maxlength="7" autocapitalize="characters" value="'+esc(plateOk(pl.placa)?pl.placa:"")+'"><div class="sp"></div><button class="btn gold block" id="plOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="plX">Cancelar</button>');
   $("#plX",bg).onclick=cerrarSheet;
   $("#plOk",bg).onclick=function(){ var p=($("#plP",bg).value||"").toUpperCase().replace(/[\s-]/g,""); if(!plateOk(p)){ toast("Formato de placa: 3 letras y 3 números"); return; } pl.placa=p; pl.sinPlaca=false; pl.esporadico=true; LS.set("ops_desp",S.desp); cerrarSheet(); render(); };
+};
+/* Quitar a quien ejecuta el cargue, desde la ficha de la planilla (coordinador o administrador) */
+ACT.liberarpl=async function(){
+  var cal=planillasCalc()[PL.i]; if(!cal) return; var tk=tareaDePlanilla(cal.pl); if(!tk||!tk.datos.asignadoId){ toast("Este cargue ya está disponible"); return; }
+  if(!confirm("¿Quitar a "+(tk.datos.asignadoNombre||"la persona")+" de este cargue? Queda disponible para que otro auxiliar lo tome. Lo que ya se marcó se conserva.")) return;
+  try{ await DB.patch("ops_tareas",tk.id,{asignadoId:"",asignadoNombre:"Sin asignar",liberadoEn:ahora(),liberadoPor:S.me.id,actualizadoEn:ahora()}); toast("Cargue liberado: queda disponible"); await cargarDesp(); }
+  catch(e){ toast("No se pudo liberar: "+(e.message||e)); }
 };
 ACT.abrirpl=function(el,d){ PL.i=+d("i"); go("placa"); };
 ACT.dfecha=function(el,d){ DF.fecha=d("f"); render(); };
