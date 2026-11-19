@@ -249,7 +249,7 @@ var S = {
   umb:LS.get("ops_umb",{bajo:0.6,alto:1,cob:0.95}),
   desp:LS.get("ops_desp",{planillas:[],lineas:{},archivos:[]}),
   modoScan:LS.raw("ops_scanmode")||"camara",
-  exigir:LS.raw("ops_exigir")!=="0",
+  exigir:true,                /* escaneo obligatorio: lo define el coordinador por C.O. (coleccion config) */
   conectado:null
 };
 function esAdmin(){ return !!S.me && S.me.rol==="administrador"; }
@@ -602,6 +602,7 @@ function loginComo(u){
 }
 async function iniciarSesion(){
   limpiarVistas(); reset("cargando");
+  await cargarConfig();
   try{ if(esCoord()){ await cargarBase(); await cargarMatriz(coActual()).catch(function(){}); } }catch(e){ toast("No se pudieron cargar los datos base: "+(e.message||e)); }
   reset("home"); cargarHome();
 }
@@ -745,6 +746,7 @@ function limpiarVistas(){
   W=null; DP.tareas={}; S.cap={}; NUEVA={}; MZ.plan=null;
 }
 async function cargarHome(){
+  if(S.me&&S.me.rol==="operario"){ var ex0=S.exigir; cargarConfig().then(function(){ var c=cur(); if(S.exigir!==ex0&&c&&c.v==="home") render(); }); }
   if(!S.me||S.me.rol!=="operario") return;
   HOME.cargando=!HOME.tareas.length; HOME.err="";
   try{
@@ -765,7 +767,7 @@ VIEWS.home=function(){
     if(!act.length&&!HOME.sem.length) h+='<div class="empty">'+(HOME.cargando?"Buscando tus tareas…":"No tienes tareas pendientes.<br>Cuando tu coordinador te asigne una, aparecerá aquí.")+'</div>';
     if(fin.length){ h+='<h2>Completadas</h2>'; fin.slice(0,8).forEach(function(t){ h+=tareaHtml(t,'data-act="abrirtarea" data-id="'+esc(t.id)+'"'); }); }
     h+='<h2>Mi dispositivo</h2><div class="card"><label class="lb" style="margin-top:0">Cómo escanea</label><div class="row"><span class="chip btn2 '+(S.modoScan==="camara"?"sel":"")+'" data-act="scan" data-m="camara">Cámara</span><span class="chip btn2 '+(S.modoScan==="lector"?"sel":"")+'" data-act="scan" data-m="lector">Pistola / lector</span></div>'+
-      '<label class="lb">Control</label><div class="row"><span class="chip btn2 '+(S.exigir?"sel":"")+'" data-act="exigir">'+(S.exigir?"Exigir escaneo: sí":"Exigir escaneo: no")+'</span></div><p class="small muted">Con "exigir escaneo" el producto solo se confirma si el código leído coincide.</p></div>';
+      '<p class="small muted" style="margin-top:10px">Escaneo obligatorio: <b>'+(S.exigir?"sí":"no")+'</b>. Lo define tu coordinador: '+(S.exigir?"el producto solo se confirma si el código leído coincide.":"puedes confirmar el producto sin escanearlo.")+'</p></div>';
     app(h); return;
   }
   var h2='';
@@ -774,7 +776,7 @@ VIEWS.home=function(){
     '<button class="tile" data-act="ir" data-v="ali"><div class="ic">▦</div><div><b>Alistamiento</b><span>Cargar facturas, pedidos, requisiciones o remisiones y asignar</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="desp"><div class="ic">⛟</div><div><b>Despacho</b><span>Planilla por vehículo, segundo alistamiento y uso de capacidad</span></div></button>'+
     '<button class="tile" data-act="irsem"><div class="ic">◐</div><div><b>Semáforos de vencimiento</b><span>Se abre con tu mismo usuario, sin volver a ingresar</span></div></button>'+
-    pendientesHtml()+
+    pendientesHtml()+configEscaneoHtml()+
     '<h2>Administración</h2>'+
     '<button class="tile" data-act="ir" data-v="rutas"><div class="ic">⌖</div><div><b>Rutas por población</b><span>Qué ruta atiende cada población, para el listado de separación</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="matriz"><div class="ic">▤</div><div><b>Matriz de asignación</b><span>Qué referencias le corresponden a cada auxiliar (y, a futuro, su ubicación)</span></div></button>';
@@ -784,13 +786,24 @@ VIEWS.home=function(){
   app(h2);
 };
 ACT.refrescar=function(){ cargarHome(); toast("Actualizando…",1200); };
-ACT.cosel=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); S.matriz={}; render(); cargarBase().catch(function(){}); };
+ACT.cosel=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); S.matriz={}; render(); cargarBase().catch(function(){}); cargarConfig().then(render); };
 ACT.ir=function(el,d){ go(d("v")); alEntrar(d("v")); };
 ACT.tema=function(){ var dk=document.documentElement.classList.toggle("dark"); LS.setRaw("ops_tema",dk?"dark":"light"); render(); };
 ACT.salir=function(){ salir(); };
 ACT.back=function(){ back(); };
 ACT.scan=function(el,d){ S.modoScan=d("m"); LS.setRaw("ops_scanmode",S.modoScan); render(); };
-ACT.exigir=function(){ S.exigir=!S.exigir; LS.setRaw("ops_exigir",S.exigir?"1":"0"); render(); };
+/* El escaneo obligatorio lo define el coordinador/administrador por centro de operacion */
+async function cargarConfig(){
+  try{ var co=coActual(); if(!co) return; var r=await DB.get("config","co-"+co); S.exigir=!(r&&r.datos&&r.datos.exigir===false); }catch(e){}
+}
+document.addEventListener("change",async function(e){
+  var t=e.target; if(!t||!t.getAttribute||t.getAttribute("data-cfg")!=="exigir") return; var on=t.checked, co=coActual();
+  try{ await DB.set("config","co-"+co,{co:co,exigir:on,actualizadoEn:ahora(),actualizadoPor:S.me.id}); S.exigir=on; toast(on?"Escaneo obligatorio activado":"Escaneo obligatorio desactivado"); render(); }
+  catch(err){ t.checked=!on; toast("No se pudo guardar: "+(err.message||err)); }
+});
+function configEscaneoHtml(){
+  return '<h2>Escaneo en la bodega</h2><div class="card"><label class="sw"><input type="checkbox" data-cfg="exigir" '+(S.exigir?"checked":"")+'><i></i><span>Exigir escaneo <small>· '+(S.exigir?"el auxiliar solo confirma si el código leído coincide":"el auxiliar puede confirmar sin escanear")+'</small></span></label><p class="small muted">Aplica a todos los auxiliares de '+esc((ciudadPorCo(coActual())||{nombre:coActual()}).nombre)+'. El auxiliar ya no lo puede cambiar.</p></div>';
+}
 
 /* ---------- tablero de avance (coordinadores y administrador) ---------- */
 var TB={mod:"todos",co:"",rango:3,datos:null,cargando:false,err:""};
