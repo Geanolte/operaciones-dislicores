@@ -921,6 +921,7 @@ function guardarW(){ clearTimeout(wTimer); wTimer=setTimeout(enviarW,500); }
 async function enviarW(){
   if(!W||W.ro) return;
   try{
+    if(!W.shared){ var vig=await DB.get("ops_tareas",W.id); if(vig&&vig.datos.asignadoId!==S.me.id){ W.ro=true; toast("Esta tarea ya no está asignada a ti: tu coordinador la quitó o la reasignó.",5000); render(); return; } }
     var e=[];
     if(W.shared){
       /* tarea compartida (referencias sin asignar): se combina con lo que marcaron los demas auxiliares */
@@ -969,7 +970,7 @@ VIEWS.trab=function(){
   if(W.shared) h+='<div class="hint" style="margin-bottom:8px">Referencias sin asignar: cualquier auxiliar de la bodega puede separarlas. Busca por código o por palabras del producto; lo que marques lo ven los demás.</div>';
   h+='<div class="kpis"><div class="kpi"><b>'+a.ok+'</b><span>Completas</span></div><div class="kpi"><b>'+a.parc+'</b><span>Parciales</span></div><div class="kpi"><b>'+a.no+'</b><span>Sin stock</span></div><div class="kpi"><b>'+a.pend+'</b><span>Pendientes</span></div></div>';
   h+='<div style="margin:10px 0">'+barra(a.tot?a.hechas/a.tot:0,true)+'</div>';
-  if(W.ro&&esCoord()){ var ops=usuariosDe(d.co,"operario"); h+='<div class="card"><label class="lb" style="margin-top:0">Reasignar esta tarea a</label><div class="row"><select id="rsel" class="grow"><option value="">— Elegir auxiliar —</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'"'+(u.id===d.asignadoId?' selected':'')+'>'+esc(u.nombre)+'</option>'; }).join("")+'</select><button class="btn sm" data-act="reasignar">Reasignar</button></div></div>'; }
+  if(W.ro&&esCoord()){ var ops=usuariosDe(d.co,"operario"); h+='<div class="card"><label class="lb" style="margin-top:0">Reasignar esta tarea a</label><div class="row"><select id="rsel" class="grow"><option value="">— Elegir auxiliar —</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'"'+(u.id===d.asignadoId?' selected':'')+'>'+esc(u.nombre)+'</option>'; }).join("")+'</select><button class="btn sm" data-act="reasignar">Reasignar</button></div>'+(d.asignadoId?'<div class="sp"></div><button class="btn ghost sm" data-act="liberartarea" data-id="'+esc(W.id)+'">Quitar a '+esc(d.asignadoNombre||"")+' y dejar disponible</button>':'')+'</div>'; }
   if(desp&&!W.ro&&!W.modo){
     var hayF=!!(d.facturas&&d.facturas.length);
     h+='<div class="card gold"><b>¿Cómo vas a cargar este vehículo?</b><p class="small muted"><b>Consolidado:</b> una sola lista con todo lo del vehículo, empezando por las cajas.<br><b>Por factura:</b> entras a cada factura (con el nombre del cliente) y cargas sus referencias.</p><button class="btn gold block" data-act="modocargue" data-m="consolidado">Cargar consolidado</button><div class="sp"></div><button class="btn block" data-act="modocargue" data-m="factura" '+(hayF?'':'disabled')+'>Cargar por factura</button>'+(hayF?'':'<p class="small muted">Este vehículo no trae el detalle por factura.</p>')+'</div>';
@@ -1008,6 +1009,13 @@ function esDespW(){ return !!(W&&W.d&&W.d.modulo==="despacho"); }ACT.filt=functi
 ACT.fgrupo=function(el,d){ TR.g=TR.g===d("g")?"":d("g"); render(); };
 ACT.linea=function(el,d){ abrirLinea(+d("i"),false,false); };
 ACT.escanear=function(){ escanear("Escanear producto",function(code){ var i=buscarPorCodigo(code); if(i<0) toast("Ese producto no está en su lista"); else abrirLinea(i,true,false); }); };
+/* Quitar a quien ejecuta una tarea (coordinador o administrador): queda disponible para que otro la tome; el avance se conserva */
+ACT.liberartarea=async function(el,d){
+  var id=d("id"); if(!W||W.id!==id) return;
+  if(!confirm("¿Quitar a "+(W.d.asignadoNombre||"la persona")+" de esta tarea? Queda disponible para que otro auxiliar la tome. Lo que ya se marcó se conserva.")) return;
+  try{ await DB.patch("ops_tareas",id,{asignadoId:"",asignadoNombre:"Sin asignar",liberadoEn:ahora(),liberadoPor:S.me.id,actualizadoEn:ahora()}); W.d.asignadoId=""; W.d.asignadoNombre="Sin asignar"; toast("Tarea liberada: queda disponible"); render(); }
+  catch(e){ toast("No se pudo liberar: "+(e.message||e)); }
+};
 ACT.reasignar=async function(){
   var id=$("#rsel").value; if(!id){ toast("Elige un auxiliar"); return; }
   try{ await DB.patch("ops_tareas",W.id,{asignadoId:id,asignadoNombre:nombreDe(id),actualizadoEn:ahora()}); W.d.asignadoId=id; W.d.asignadoNombre=nombreDe(id); toast("Tarea reasignada a "+nombreDe(id)); render(); }
@@ -2043,7 +2051,7 @@ VIEWS.placa=function(){
   h+='</div><div class="kpis"><div class="kpi"><b>'+cal.conLin+'/'+pl.facs.length+'</b><span>Facturas</span></div><div class="kpi"><b>'+nf(cal.items.length)+'</b><span>Referencias</span></div><div class="kpi"><b>'+nf(c.und)+'</b><span>Unidades</span></div><div class="kpi"><b>'+nf(c.cj)+'</b><span>Cajas</span></div><div class="kpi"><b>'+nf(c.su)+'</b><span>Sueltas</span></div><div class="kpi"><b>'+nf(c.kg)+'</b><span>kg</span></div><div class="kpi"><b>'+nf(c.m3,1)+'</b><span>m³</span></div></div>';
   h+=avisosCarga(c);
   h+='<h2>Segundo alistamiento (cargue)</h2>';
-  if(tk){ h+=tareaHtml(tk,'data-act="vertarea" data-id="'+esc(tk.id)+'"'); }
+  if(tk){ h+=tareaHtml(tk,'data-act="vertarea" data-id="'+esc(tk.id)+'"')+(tk.datos.asignadoId?'<p class="small muted">Para quitar a quien lo ejecuta, abre el cargue y usa «Quitar y dejar disponible».</p>':''); }
   else if(!cal.items.length) h+='<p class="small muted">Esta planilla aún no tiene líneas cargadas.</p>';
   else { var ops=usuariosDe(coActual(),"operario"); h+='<div class="card"><b>Publicar para cargue</b><p class="small muted">Lo normal es dejarlo <b>disponible</b>: le aparece a todos los auxiliares de la bodega en «Vehículos disponibles para cargue» y cada uno escoge cuál despachar. Si prefieres, asígnalo a una persona.</p><label class="lb">Quién lo carga</label><div class="row"><select id="cgsel" class="grow"><option value="">Disponible para que cualquier auxiliar lo tome</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">Asignar a '+esc(u.nombre)+'</option>'; }).join("")+'</select><button class="btn gold sm" data-act="enviarcargue">Publicar</button></div><p class="small muted">Usted ve el avance aquí y en «Avance de tareas». El auxiliar decide si carga consolidado o factura por factura.</p></div>'; }
   h+='<h2>Listado consolidado</h2>'+cal.items.map(function(it){ return '<div class="line" style="cursor:default"><div style="min-width:0"><div class="r">'+esc(it.ref)+'</div><div class="d">'+esc(it.desc)+'</div><div class="row"><span class="chip info">'+esc(it.grupo)+'</span><span class="chip info">'+esc(it.linea)+'</span></div></div><div class="q">'+esc(fmtQty(it.total,it.ue))+'</div></div>'; }).join("");
