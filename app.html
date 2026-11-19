@@ -135,7 +135,12 @@ table.lst .ck{text-align:center;width:28px}
   table.lst th{padding:5px 7px;font-size:13px}
   table.lst td{padding:5px 7px;line-height:1.2}
   table.lst td.n{font-size:17px}
-  table.lst .dc{width:100%}
+  table.lst{table-layout:fixed;width:100%}
+  table.lst .c-ub{width:9%} table.lst .c-ref{width:11%} table.lst .c-bod{width:8%} table.lst .c-bar{width:14.5%} table.lst .c-ue{width:5%} table.lst .c-q{width:11%}
+  table.lst td,table.lst th{overflow-wrap:anywhere}
+  table.lst th{letter-spacing:0;white-space:nowrap}
+  table.lst td.mono{font-size:13.5px;letter-spacing:0}
+  html,body{width:100%!important;overflow:visible!important}
   table.lst tbody tr:nth-child(even) td{background:#dcdcdc!important}
   table.lst tbody tr:nth-child(odd) td{background:#fff!important}
   table.lst thead{display:table-header-group}
@@ -1931,7 +1936,7 @@ VIEWS.listado=function(){
   var fp=LST.piso?(LST.piso==="__sin"?"Sin asignar":nombreDe(LST.piso)):"TODOS";
   h+='<div class="lst-sheet"><div class="lst-title">LISTADO DE SEPARACIÓN · '+esc(String(ciudad).toUpperCase())+'</div>'+
     '<div class="lst-head"><table class="lst-res"><tr><th>Piso / auxiliar</th><td>'+esc(fp)+'</td><th>Cajas totales</th><td>'+nf(t.cajas)+'</td><th>Peso estimado</th><td>'+t.kg.toLocaleString("es-CO",{maximumFractionDigits:2})+' kg</td></tr><tr><th>Ruta</th><td><b>'+esc(LST.ruta||"TODAS")+'</b></td><th>Unid. sueltas</th><td>'+nf(t.sueltas)+'</td><th>Volumen estimado</th><td>'+t.m3.toLocaleString("es-CO",{maximumFractionDigits:1})+' m³</td></tr><tr><th>Generado</th><td>'+esc(new Date().toLocaleString("es-CO",{dateStyle:"short",timeStyle:"short"}))+'</td><th>Referencias</th><td>'+nf(C.items.length)+'</td><th>Vehículo sugerido</th><td><b>'+esc(sugerirVehiculo(t.kg,t.m3))+'</b></td></tr></table></div>';
-  h+='<table class="lst"><thead><tr>'+(C.conUbic?'<th>Ubicación</th>':'')+'<th>Referencia</th><th class="dc">Descripción</th><th>Bodega</th><th>Cód. barras</th><th class="n">U.E</th><th class="n">Cajas</th><th class="n">Unidades</th></tr></thead><tbody>'+
+  h+='<table class="lst"><thead><tr>'+(C.conUbic?'<th class="c-ub">Ubicación</th>':'')+'<th class="c-ref">Referencia</th><th class="dc">Descripción</th><th class="c-bod">Bodega</th><th class="c-bar">Cód. barras</th><th class="n c-ue">U.E</th><th class="n c-q">Cajas</th><th class="n c-q">Unidades</th></tr></thead><tbody>'+
     C.items.map(function(it){ var m=C.M[it.ref]||{}; return '<tr>'+(C.conUbic?'<td>'+esc(m.ubicacion||"")+'</td>':'')+'<td><b>'+esc(it.ref)+'</b></td><td class="dc">'+esc(it.desc)+'</td><td>'+esc(it.bod)+'</td><td class="mono">'+esc(it.bar)+'</td><td class="n">'+esc(it.ue)+'</td><td class="n">'+qty(it._c)+'</td><td class="n">'+qty(it._s)+'</td></tr>'; }).join("")+'</tbody></table>';
   if(!C.items.length) h+='<div class="empty">No hay referencias con este filtro.</div>';
   h+='</div>';
