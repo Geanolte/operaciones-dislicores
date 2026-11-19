@@ -426,7 +426,7 @@ function tipoDe(hdr,docs){
   if(tiene("cliente resumen factura")||tiene("numero planilla de factura")) return "FAC";
   if(tiene("cant. comprom.")) return "PED";
   var p=String(docs[0]||"").toUpperCase();
-  if(/^FV/.test(p)) return "FAC"; if(/-RQ[TV]-|^RQ[TV]/.test(p)) return "REQ"; if(/^T(CA|BV)/.test(p)) return "REM";
+  if(/^FV/.test(p)) return "FAC"; if(/-RQ[TV]-|^RQ[TV]/.test(p)) return "REQ"; if(/^(T(CA|BV)|SM)/.test(p)) return "REM";
   return "DOC";
 }
 /* Lineas de pedido, factura, requisicion o remision: SOLO se conservan referencia, descripcion de producto, barras,
@@ -2031,7 +2031,7 @@ ACT.cargapla=function(){
       var m=colMap(t.hdr,A_PLA); if(m.num<0||m.fac<0||m.veh<0){ errs.push(it.f.name+": debe traer número de planilla, documento y vehículo"); return; }
       var nuevas={}, nord=[];
       t.rows.forEach(function(r){
-        var num=String(r[m.num]||"").trim(), fac=String(r[m.fac]||"").trim(); if(!num||!fac||/^gran total/i.test(String(r[0]||""))) return;
+        var num=String(r[m.num]||"").trim(), fac=String(r[m.fac]||"").replace(/\s+/g,""); if(!num||!fac||/^gran total/i.test(String(r[0]||""))) return;
         if(m.co>=0&&String(r[m.co]==null?"":r[m.co]).trim()!==co){ ajenas++; return; }
         if(m.est>=0&&normH(r[m.est])==="anulado"){ anul++; return; }
         var f=r[m.fecha], fecha=typeof f==="number"?new Date(Math.round((f-25569)*86400000)).toISOString().slice(0,10):String(f||"").slice(0,10);
@@ -2057,7 +2057,7 @@ ACT.cargapla=function(){
       try{
         var r=parseLineas(t), m=r.cols; if(m.doc<0){ err.push(it.f.name+" (sin Nro documento)"); return; }
         var nuevas={},omit={},cnt=0,cli={}; S.desp.clientes=S.desp.clientes||{};
-        t.rows.forEach(function(row){ var ref=normRef(row[m.ref]), doc=String(row[m.doc]||"").trim(), cant=parseDbl(row[m.cant]); if(!ref||!doc||!(cant>0)) return; if(m.cli>=0&&!cli[doc]) cli[doc]=nombreCliente(row[m.cli]);
+        t.rows.forEach(function(row){ var ref=normRef(row[m.ref]), doc=String(row[m.doc]||"").replace(/\s+/g,""), cant=parseDbl(row[m.cant]); if(!ref||!doc||!(cant>0)) return; if(m.cli>=0&&!cli[doc]) cli[doc]=nombreCliente(row[m.cli]);
           if(S.desp.lineas[doc]){ omit[doc]=1; return; }
           (nuevas[doc]=nuevas[doc]||[]).push([ref,m.desc>=0?String(row[m.desc]||"").trim():"",m.bar>=0?normBar(row[m.bar]):"",m.ue>=0?ueDe(row[m.ue]):0,cant]); });
         Object.keys(nuevas).forEach(function(doc){ if(cli[doc]) S.desp.clientes[doc]=cli[doc]; var ls=nuevas[doc].map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],cant:a[4],bod:"",grupo:"",linea:"",doc:doc,t:"FAC"}; }); var dd=desglosar(ls,coActual()); S.desp.lineas[doc]=dd.lineas.map(function(l){ return [l.ref,l.desc,l.bar,l.ue,l.cant]; }); cnt++; });
