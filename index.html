@@ -2159,7 +2159,7 @@ ACT.enviarcargue=async function(){
   /* facturas del vehiculo con su cliente (solo el nombre) y sus lineas, para cargar factura por factura */
   var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:cl[f]||"",l:S.desp.lineas[f]}; });
   try{
-    var doc=tareaDoc("despacho",sid,"Cargue "+pl.placa+" · "+etiquetaPl(pl),co,aux,items,{placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
+    var doc=tareaDoc("despacho",sid,(pl.revision?"Verificación de lo separado y no despachado · ":"Cargue "+pl.placa+" · ")+(pl.revision?pl.num:etiquetaPl(pl)),co,aux,items,{placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
     await DB.set("ops_tareas",doc.id,doc.datos); toast(aux?"Asignado a "+nombreDe(aux):"Vehículo publicado: los auxiliares de "+(ciudadPorCo(co)||{nombre:co}).nombre+" lo ven disponible"); await cargarDesp();
   }catch(e){ toast("No se pudo enviar: "+(e.message||e)); }
 };ACT.borrardesp=function(){ if(confirm("¿Borrar las planillas y facturas cargadas en este dispositivo? Las capacidades y tareas ya enviadas no se tocan.")){ S.desp={planillas:[],lineas:{},clientes:{},archivos:[]}; LS.set("ops_desp",S.desp); render(); } };
@@ -2187,7 +2187,7 @@ ACT.cargapla=function(){
     });
     if(!orden.length){ toast(errs[0]||"No hay planillas de tu centro de operación en el archivo",4500); return; }
     S.desp.planillas=orden.map(function(k){ return mp[k]; }).sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:String(x.num).localeCompare(String(y.num),undefined,{numeric:true}); });
-    registrarVehiculos(S.desp.planillas).catch(function(){}); traerDocs().then(function(){ render(); avisoConciliacion(); }).catch(function(){}); LS.set("ops_desp",S.desp);
+    registrarVehiculos(S.desp.planillas).catch(function(){}); traerDocs().then(function(){ render(); confirmarFaltantes(); }).catch(function(){}); LS.set("ops_desp",S.desp);
     toast(S.desp.planillas.filter(function(p){ return p.co===co; }).length+" planillas de "+((ciudadPorCo(co)||{nombre:co}).nombre)+" ("+S.desp.planillas.filter(function(p){ return p.co===co&&p.tipo==="PLI"; }).length+" PLI)"+(ajenas?" · "+nf(ajenas)+" filas de otros C.O. omitidas":"")+(anul?" · "+anul+" anuladas omitidas":"")+(errs.length?" · "+errs.join("; "):""),5000); render();
   });
 };ACT.cargafac=function(){
@@ -2277,7 +2277,7 @@ async function publicarPl(cal,aux){
   if(!cal.items.length||tareaDePlanilla(pl)||(await DB.get("ops_tareas",sid+"--SIN"))) return 0;
   var items=cal.items.map(function(i){ return Object.assign({},i,{tipos:"FAC",seq:0,zona:"",cemp:avisoEmpaque(i.ref)}); });
   var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:cl[f]||"",l:S.desp.lineas[f]}; });
-  var doc=tareaDoc("despacho",sid,"Cargue "+pl.placa+" · "+etiquetaPl(pl),co,aux,items,{placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
+  var doc=tareaDoc("despacho",sid,(pl.revision?"Verificación de lo separado y no despachado · ":"Cargue "+pl.placa+" · ")+(pl.revision?pl.num:etiquetaPl(pl)),co,aux,items,{placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
   await DB.set("ops_tareas",doc.id,doc.datos); return 1;
 }
 function barraSeleccionHtml(cal){
@@ -2321,12 +2321,35 @@ function conciliar(){
   return {sinPlanilla:sinPlanilla,sinAlistar:sinAlistar,dif:dif,unidSin:tot};
 }
 function listaDocs(ks,n){ var t=ks.slice(0,n).map(function(k){ var c=(S.desp.clientes||{})[k]||(CON.docs&&CON.docs[k]&&CON.docs[k].cli)||""; return '<span class="mono">'+esc(k)+'</span>'+(c?' <small class="muted">'+esc(c)+'</small>':''); }).join(" · "); return t+(ks.length>n?' … y '+(ks.length-n)+' más':''); }
+/* Al cargar la planilla: si hay documentos separados que no estan planillados, se pide confirmar que se sigue con el despacho */
+function ackDe(){ S.desp.ack=S.desp.ack||{}; return (S.desp.ack[coActual()]=S.desp.ack[coActual()]||{}); }
+function confirmarFaltantes(){
+  var c=conciliar(); if(!c){ return; }
+  var ack=ackDe(), nuevos=c.sinPlanilla.filter(function(k){ return !ack[k]; });
+  if(!nuevos.length){ avisoConciliacion(); return; }
+  var tot=Object.keys(CON.docs).length, plan=tot-c.sinPlanilla.length;
+  var bg=abrirSheet('<h3>Faltan documentos en la planilla</h3><p>En el alistamiento se separaron <b>'+nf(tot)+' documentos</b> y solo <b>'+nf(plan)+'</b> están en las planillas. <b>Faltan '+nf(nuevos.length)+'</b>:</p><p class="small">'+listaDocs(nuevos,15)+'</p><p><b>¿Seguimos con el despacho así?</b></p><button class="btn gold block" id="cfSi">Sí, seguir con el despacho</button><div class="sp"></div><button class="btn ghost block" id="cfNo">No, voy a revisar la planilla</button><p class="small muted">Si sigues, al terminar el despacho la app te preguntará si quieres generar una orden de verificación de lo que se separó y no se despachó.</p>');
+  $("#cfSi",bg).onclick=function(){ nuevos.forEach(function(k){ ack[k]=1; }); LS.set("ops_desp",S.desp); cerrarSheet(); toast("Seguimos con el despacho. Al final podrás generar la verificación.",4000); render(); };
+  $("#cfNo",bg).onclick=function(){ cerrarSheet(); toast("Corrige la planilla y vuelve a cargarla; el aviso sigue visible en Despacho.",5000); render(); };
+}
+/* Cuando todos los cargues terminaron y quedaron documentos separados sin despachar: ofrecer la orden de verificacion */
+function cierreHtml(){
+  var c=conciliar(); if(!c||!c.sinPlanilla.length) return "";
+  var ack=ackDe(), pend=c.sinPlanilla.filter(function(k){ return ack[k]; }); if(!pend.length) return "";
+  var ts=Object.keys(DP.tareas).map(function(k){ return DP.tareas[k]; }).filter(function(t){ return t.datos.modulo==="despacho"&&!/^DREV/.test(t.datos.sid||""); });
+  if(!ts.length||ts.some(function(t){ return t.datos.estado!=="completada"; })) return "";
+  var u=0; pend.forEach(function(k){ (CON.docs[k].l||[]).forEach(function(a){ u+=(+a[4]||0); }); });
+  return '<div class="card" style="border-left:5px solid var(--gold)"><b>Despacho realizado</b><p class="small">Todos los vehículos ya se cargaron. Quedaron <b>'+nf(pend.length)+' documentos separados que no se despacharon</b> ('+nf(u)+' unidades). ¿Quieres generar la revisión?</p><p class="small muted">Es una orden de <b>verificación</b>, no de despacho: sirve para comprobar en el muelle toda la mercancía que se separó y no salió.</p><button class="btn gold" data-act="crearrev">Sí, generar la revisión</button></div>';
+}
 function conciliacionHtml(){
+  var cierre=cierreHtml(); return cierre+conciliacionBase();
+}
+function conciliacionBase(){
   var c=conciliar(); if(!c) return "";
   var ok=!c.sinPlanilla.length&&!c.sinAlistar.length&&!c.dif.length;
   if(ok) return '<div class="hint" style="border-color:#2e7d32"><b>Conciliación al día:</b> todo lo separado en el alistamiento está en alguna planilla y las cantidades coinciden.</div>';
   var h='<div class="card" style="border-left:5px solid #c0392b"><b>Diferencias entre lo separado y lo que se va a despachar</b>';
-  if(c.sinPlanilla.length) h+='<p class="small"><b>'+c.sinPlanilla.length+' documento'+(c.sinPlanilla.length>1?'s':'')+' separado'+(c.sinPlanilla.length>1?'s':'')+' sin planilla</b> ('+nf(c.unidSin)+' unidades): '+listaDocs(c.sinPlanilla,12)+'</p><button class="btn ghost sm" data-act="crearrev">Crear despacho de revisión con estos documentos</button><p class="small muted">Si de verdad no se van a despachar, el despacho de revisión te deja ver y revisar esa mercancía como un vehículo más (no cuenta como un vehículo real).</p>';
+  if(c.sinPlanilla.length) h+='<p class="small"><b>'+c.sinPlanilla.length+' documento'+(c.sinPlanilla.length>1?'s':'')+' separado'+(c.sinPlanilla.length>1?'s':'')+' sin planilla</b> ('+nf(c.unidSin)+' unidades): '+listaDocs(c.sinPlanilla,12)+'</p><button class="btn ghost sm" data-act="crearrev">Crear orden de verificación con estos documentos</button><p class="small muted">Es una orden de verificación (no de despacho) para revisar en el muelle lo que se separó y no se despacha.</p>';
   if(c.sinAlistar.length) h+='<p class="small"><b>'+c.sinAlistar.length+' documento'+(c.sinAlistar.length>1?'s':'')+' en planilla '+(c.sinAlistar.length>1?'que no pasaron':'que no pasó')+' por el alistamiento</b>: '+listaDocs(c.sinAlistar,12)+'</p>';
   if(c.dif.length){ var dd={}; c.dif.forEach(function(x){ (dd[x.doc]=dd[x.doc]||[]).push(x); });
     h+='<p class="small"><b>'+Object.keys(dd).length+' documento'+(Object.keys(dd).length>1?'s':'')+' con cantidades distintas</b> (separado → despacho):</p>'+Object.keys(dd).slice(0,8).map(function(k){ return '<div class="small"><span class="mono">'+esc(k)+'</span>: '+dd[k].slice(0,5).map(function(x){ return esc(x.ref)+' '+nf(x.sep)+' → '+nf(x.desp); }).join(", ")+(dd[k].length>5?' …':'')+'</div>'; }).join(""); }
@@ -2335,13 +2358,13 @@ function conciliacionHtml(){
 function avisoConciliacion(){ var c=conciliar(); if(!c) return; var n=c.sinPlanilla.length+c.sinAlistar.length+(c.dif.length?1:0); if(n) toast("Ojo: hay diferencias entre lo separado y lo que se despachará"+(c.sinPlanilla.length?" · "+c.sinPlanilla.length+" documentos sin planilla":"")+(c.sinAlistar.length?" · "+c.sinAlistar.length+" sin alistar":"")+(c.dif.length?" · cantidades distintas":""),6000); }
 ACT.crearrev=function(){
   var c=conciliar(); if(!c||!c.sinPlanilla.length){ toast("No hay documentos sin planilla"); return; }
-  if(!confirm("Se creará un despacho de revisión con "+c.sinPlanilla.length+" documentos separados que no están en ninguna planilla. ¿Continuar?")) return;
+  if(!confirm("Se creará una orden de verificación con "+c.sinPlanilla.length+" documentos separados que no están en ninguna planilla. No es un despacho. ¿Continuar?")) return;
   var co=coActual(), f=new Date().toISOString().slice(0,10), num="REV-"+f.replace(/-/g,"");
   c.sinPlanilla.forEach(function(k){ if(!S.desp.lineas[k]){ var sd=CON.docs[k], ls=(sd.l||[]).map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],cant:a[4],bod:"",grupo:"",linea:"",doc:k,t:sd.t||"FAC"}; }), dd=desglosar(ls,co); S.desp.lineas[k]=dd.lineas.map(function(l){ return [l.ref,l.desc,l.bar,l.ue,l.cant]; }); if(sd.cli) S.desp.clientes[k]=sd.cli; } });
   S.desp.planillas=(S.desp.planillas||[]).filter(function(p){ return !(p.revision&&p.num===num&&p.co===co); });
   S.desp.planillas.push({num:num,tipo:"REV",co:co,fecha:f,placa:"REVISIÓN",facs:c.sinPlanilla.slice(),revision:true});
   S.desp.planillas.sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:String(x.num).localeCompare(String(y.num),undefined,{numeric:true}); });
-  LS.set("ops_desp",S.desp); toast("Despacho de revisión creado: búscalo en «Vehículos» como REVISIÓN"); render();
+  LS.set("ops_desp",S.desp); toast("Orden de verificación creada: búscala en «Vehículos» como REVISIÓN"); render();
 };
 
 /* ===== Listado para el conductor: la mercancia del vehiculo, por documento ===== */
