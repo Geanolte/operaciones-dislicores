@@ -180,6 +180,41 @@ main.wide{max-width:1240px}
 .hc .lb{margin:6px 0 3px}
 .hc .seg .chip{padding:5px 10px}
 
+/* Vista compacta para coordinador, supervisor y administrador (en pantalla; la impresion no cambia) */
+@media screen{
+body.compacto main{max-width:960px;padding:8px 14px 60px}
+body.compacto main.wide{max-width:1240px}
+body.compacto #top{padding:6px 12px}
+body.compacto h1{font-size:18px;margin:2px 0 2px}
+body.compacto h2{font-size:14px;margin:10px 0 4px}
+body.compacto p{margin:3px 0}
+body.compacto .card{padding:8px 11px;margin:6px 0;border-radius:12px;box-shadow:none}
+body.compacto .tile{padding:7px 10px;margin:5px 0;gap:9px;border-radius:12px;box-shadow:none}
+body.compacto .tile .ic{width:32px;height:32px;font-size:16px;border-radius:9px}
+body.compacto .tile b{font-size:14px;line-height:1.2}
+body.compacto .tile span{font-size:12px;line-height:1.25}
+body.compacto .task{padding:7px 11px;margin:5px 0;border-radius:12px;box-shadow:none}
+body.compacto .task .tt b{font-size:14px}
+body.compacto .task .sub{margin:1px 0 4px}
+body.compacto .task .mini{margin-top:4px}
+body.compacto .btn{padding:8px 12px;border-radius:10px}
+body.compacto .btn.sm{padding:5px 9px;font-size:12.5px}
+body.compacto .sp{height:4px}
+body.compacto input[type=text],body.compacto input[type=number],body.compacto input[type=search],body.compacto select,body.compacto textarea{padding:7px 10px;border-radius:10px}
+body.compacto label.lb{margin:6px 0 3px}
+body.compacto .chip{padding:3px 8px}
+body.compacto .tabs{margin:5px 0;padding-bottom:2px}
+body.compacto .tabs .chip{padding:5px 10px}
+body.compacto .kpis{gap:6px}
+body.compacto .kpi{padding:6px 10px;border-radius:10px}
+body.compacto .kpi b{font-size:18px}
+body.compacto .line{padding:6px 10px;margin:4px 0;border-radius:10px}
+body.compacto .hint{padding:7px 10px;font-size:12.5px}
+body.compacto td{padding:5px 6px}
+body.compacto .bar{height:6px}
+body.compacto .sheet{padding:12px 14px calc(14px + env(safe-area-inset-bottom))}
+}
+
 </style>
 </head>
 <body>
@@ -334,7 +369,7 @@ function back(){ if(nav.length>1) nav.pop(); render(); window.scrollTo(0,0); }
 function reset(v,p){ nav=[{v:v,p:p||{}}]; render(); window.scrollTo(0,0); }
 function cur(){ return nav[nav.length-1]; }
 function app(h){ $("#app").innerHTML=h; }
-function render(){ var c=cur(); if(!c){ reset(S.me?"home":"login"); return; } $("#app").classList.remove("wide"); if(SOLO_ADMIN[c.v]&&!esAdmin()){ topbar("Sin acceso",subtituloUsuario(),true); app('<div class="hint warn">Esta sección solo está disponible para el administrador. Cada coordinador gestiona la matriz, las sesiones y las tareas de su propia ciudad.</div>'); return; } (VIEWS[c.v]||VIEWS.home)(c.p||{}); }
+function render(){ var c=cur(); if(!c){ reset(S.me?"home":"login"); return; } document.body.classList.toggle("compacto",!!(S.me&&S.me.rol!=="operario")); $("#app").classList.remove("wide"); if(SOLO_ADMIN[c.v]&&!esAdmin()){ topbar("Sin acceso",subtituloUsuario(),true); app('<div class="hint warn">Esta sección solo está disponible para el administrador. Cada coordinador gestiona la matriz, las sesiones y las tareas de su propia ciudad.</div>'); return; } (VIEWS[c.v]||VIEWS.home)(c.p||{}); }
 /* Datos compartidos por todas las ciudades: solo el administrador los modifica */
 var SOLO_ADMIN={ofertas:1,maestro:1,usuarios:1};
 function topbar(titulo,sub,showBack){
@@ -2334,9 +2369,6 @@ VIEWS.conductor=function(){
     docs.map(function(d){ return '<tr><td class="ck"><span class="bx">☐</span></td><td><b>'+esc(d.f)+'</b></td><td>'+esc(d.t)+'</td><td class="dc">'+esc(d.c)+(d.falta?' <i>(sin líneas cargadas)</i>':'')+'</td><td class="n">'+nf(d.ls.length)+'</td><td class="n">'+nf(d.u)+'</td></tr>'; }).join("")+'</tbody></table>';
   h+='<div class="lst-title" style="margin-top:12px;font-size:14px">2. Consolidado del vehículo</div><table class="lst"><thead><tr><th class="c-ref">Referencia</th><th class="dc">Descripción</th><th class="n c-ue">U.E</th><th class="n c-q">Cajas</th><th class="n c-q">Unidades</th></tr></thead><tbody>'+
     items.map(function(it){ var x=cajasUni(it.t,it.ue); return '<tr><td><b>'+esc(it.ref)+'</b></td><td class="dc">'+esc(it.desc)+'</td><td class="n">'+esc(it.ue)+'</td><td class="n">'+qty(x.c)+'</td><td class="n">'+qty(x.s)+'</td></tr>'; }).join("")+'</tbody></table>';
-  h+='<div class="lst-title" style="margin-top:12px;font-size:14px;page-break-before:always">3. Detalle por documento</div>'+docs.filter(function(d){ return d.ls.length; }).map(function(d){
-    return '<div style="margin-top:10px;page-break-inside:avoid"><b>'+esc(d.f)+'</b> · '+esc(d.t)+(d.c?' · '+esc(d.c):'')+'<table class="lst"><thead><tr><th class="c-ref">Referencia</th><th class="dc">Descripción</th><th class="n c-ue">U.E</th><th class="n c-q">Cajas</th><th class="n c-q">Unidades</th></tr></thead><tbody>'+
-      d.ls.map(function(a){ var m=S.mae[a[0]]||{}, ue=a[3]>0?a[3]:(m.u||1), x=cajasUni(a[4],ue); return '<tr><td><b>'+esc(a[0])+'</b></td><td class="dc">'+esc(a[1]||m.d||"")+'</td><td class="n">'+esc(ue)+'</td><td class="n">'+qty(x.c)+'</td><td class="n">'+qty(x.s)+'</td></tr>'; }).join("")+'</tbody></table></div>'; }).join("");
   h+='<div class="row" style="margin-top:28px"><div class="grow">Entregó: ______________________</div><div class="grow">Recibió (conductor): ______________________</div></div></div>';
   app(h);
 };
