@@ -169,6 +169,17 @@ main.wide{max-width:1240px}
 .vseg{flex-wrap:wrap}
 @media(max-width:900px){.mz-wrap{grid-template-columns:1fr}.mz-side{position:static;max-height:none}}
 
+/* Inicio compacto (coordinador y administrador): fichas en dos columnas */
+.hc .tg{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:6px;margin:6px 0}
+.hc .tile{margin:0;padding:8px 10px;gap:9px;border-radius:12px;box-shadow:none}
+.hc .tile .ic{width:32px;height:32px;border-radius:9px;font-size:16px}
+.hc .tile b{font-size:14px;line-height:1.2}
+.hc .tile span{font-size:11.5px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hc h2{font-size:15px;margin:12px 0 2px}
+.hc .card{padding:10px 12px;margin:6px 0}
+.hc .lb{margin:6px 0 3px}
+.hc .seg .chip{padding:5px 10px}
+
 </style>
 </head>
 <body>
@@ -325,7 +336,7 @@ function cur(){ return nav[nav.length-1]; }
 function app(h){ $("#app").innerHTML=h; }
 function render(){ var c=cur(); if(!c){ reset(S.me?"home":"login"); return; } $("#app").classList.remove("wide"); if(SOLO_ADMIN[c.v]&&!esAdmin()){ topbar("Sin acceso",subtituloUsuario(),true); app('<div class="hint warn">Esta sección solo está disponible para el administrador. Cada coordinador gestiona la matriz, las sesiones y las tareas de su propia ciudad.</div>'); return; } (VIEWS[c.v]||VIEWS.home)(c.p||{}); }
 /* Datos compartidos por todas las ciudades: solo el administrador los modifica */
-var SOLO_ADMIN={ofertas:1,maestro:1,usuarios:1,rutas:1};
+var SOLO_ADMIN={ofertas:1,maestro:1,usuarios:1};
 function topbar(titulo,sub,showBack){
   var dark=document.documentElement.classList.contains("dark");
   var quien=S.me?'<span class="sync '+(S.conectado===false?"off":"on")+'" title="'+(S.conectado===false?"Sin conexión":"En línea")+'"><i></i></span>':"";
@@ -803,19 +814,20 @@ VIEWS.home=function(){
   }
   var h2=alertaVehHtml();
   if(esAdmin()){ h2+='<label class="lb" style="margin-top:2px">Centro de operación</label><div class="seg">'+CIUDADES.map(function(c){ return '<span class="chip btn2 '+(S.coSel===c.co?"sel":"")+'" data-act="cosel" data-co="'+c.co+'">'+c.nombre+'</span>'; }).join("")+'</div>'; }
-  h2+='<button class="tile" data-act="ir" data-v="tablero"><div class="ic">◔</div><div><b>Avance de tareas</b><span>Quién está haciendo qué, en alistamiento, despacho y semáforos</span></div></button>'+
+  h2='<div class="hc">'+h2+'<div class="tg">'+'<button class="tile" data-act="ir" data-v="tablero"><div class="ic">◔</div><div><b>Avance de tareas</b><span>Quién está haciendo qué, en alistamiento, despacho y semáforos</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="ali"><div class="ic">▦</div><div><b>Alistamiento</b><span>Cargar facturas, pedidos, requisiciones o remisiones y asignar</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="desp"><div class="ic">⛟</div><div><b>Despacho</b><span>Planilla por vehículo, segundo alistamiento y uso de capacidad</span></div></button>'+
+    '<button class="tile" data-act="irrepdesp"><div class="ic">▤</div><div><b>Reporte de despacho</b><span>Consolidado por referencia, vehículo, documento o cliente, con descarga a Excel</span></div></button>'+
     '<button class="tile" data-act="irsem"><div class="ic">◐</div><div><b>Semáforos de vencimiento</b><span>Se abre con tu mismo usuario, sin volver a ingresar</span></div></button>'+
-    pendientesHtml()+configEscaneoHtml()+
-    '<h2>Administración</h2>'+
+    '</div>'+pendientesHtml()+configEscaneoHtml()+
+    '<h2>Administración</h2><div class="tg">'+
     '<button class="tile" data-act="ir" data-v="vehiculos"><div class="ic">⛟</div><div><b>Vehículos</b><span>Conductor, vencimientos, capacidad y cubicación</span></div></button>'+
-    (esAdmin()?'<button class="tile" data-act="ir" data-v="rutas"><div class="ic">⌖</div><div><b>Rutas por población</b><span>Qué ruta atiende cada población, para el listado de separación</span></div></button>':'')+
+    '<button class="tile" data-act="ir" data-v="rutas"><div class="ic">⌖</div><div><b>Rutas por población</b><span>Qué ruta atiende cada población, para el listado de separación</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="matriz"><div class="ic">▤</div><div><b>Matriz de asignación</b><span>Qué referencias le corresponden a cada auxiliar (y, a futuro, su ubicación)</span></div></button>';
   if(esAdmin()) h2+='<button class="tile" data-act="ir" data-v="ofertas"><div class="ic">✦</div><div><b>Ofertas</b><span>Cuáles son virtuales y se desglosan</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="maestro"><div class="ic">⚙</div><div><b>Maestro de productos</b><span>Grupo, línea, empaque, peso y dimensiones</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="usuarios"><div class="ic">☰</div><div><b>Usuarios y roles</b><span>Administradores, coordinadores y auxiliares</span></div></button>';
-  app(h2);
+  app(h2+'</div></div>');
 };
 ACT.refrescar=function(){ cargarHome(); toast("Actualizando…",1200); };
 ACT.cosel=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); S.matriz={}; render(); cargarBase().catch(function(){}); cargarConfig().then(render); S.vehList=[]; cargarVeh(); };
@@ -1354,7 +1366,7 @@ function pendientesHtml(){
     if(r.maeEmp) it.push(['maestro','emp',nf(r.maeEmp)+' productos con cambio de unidad de empaque']);
     if(r.maeInc) it.push(['maestro','inc',nf(r.maeInc)+' productos con datos incompletos']);
   }
-  var cs=esAdmin()?Object.keys(S.pobl).filter(function(k){ return !S.pobl[k].ruta; }).length:0; if(cs) it.push(['rutas','sin',cs+' poblaciones sin ruta']);
+  var cs=Object.keys(S.pobl).filter(function(k){ return !S.pobl[k].ruta; }).length; if(cs) it.push(['rutas','sin',cs+' poblaciones sin ruta']);
   var rv=resumenVeh(); if(rv.inc||rv.al) it.push(['vehiculos','',(rv.inc?rv.inc+' vehículos con datos incompletos':'')+(rv.inc&&rv.al?' · ':'')+(rv.al?rv.al+' con documentos por vencer o vencidos':'')]);
   if(r.mtzSin) it.push(['matriz','sin',nf(r.mtzSin)+' referencias sin auxiliar ('+esc(co)+')']);
   if(!it.length) return '<div class="hint" style="margin-top:12px">Sin pendientes por completar.</div>';
@@ -2011,10 +2023,11 @@ function tareaDePlanilla(pl){
   var k=Object.keys(DP.tareas), et=etiquetaPl(pl);
   for(var i=0;i<k.length;i++){ var t=DP.tareas[k[i]], ps=t.datos.planillas||[]; if(t.datos.sid==="D"+pl.num||ps.indexOf(et)>=0) return t; }
   return null;
-}function etiquetaPl(pl){ return /^(PLI|PLF)/i.test(String(pl.num))?String(pl.num):(pl.tipo||'PLF')+' '+pl.num; }
+}function etiquetaPl(pl){ return /^(PLI|PLF|REV)/i.test(String(pl.num))?String(pl.num):(pl.tipo||'PLF')+' '+pl.num; }
 /* Lineas de los documentos que ya se cargaron en el alistamiento (sesiones de la ciudad) */
 async function traerDocs(){
   var co=coActual(), rs=await DB.list("ops_docs",{filter:{"datos->>co":"eq."+co},all:true}), n=0; S.desp.clientes=S.desp.clientes||{};
+  CON.docs={}; rs.forEach(function(r){ CON.docs[r.id]=r.datos||{}; });
   rs.forEach(function(r){ var d=r.datos||{}, k=r.id; if(d.cli) S.desp.clientes[k]=d.cli; if(S.desp.lineas[k]) return;
     var ls=(d.l||[]).map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],cant:a[4],bod:"",grupo:"",linea:"",doc:k,t:d.t||"FAC"}; }), dd=desglosar(ls,co);
     S.desp.lineas[k]=dd.lineas.map(function(l){ return [l.ref,l.desc,l.bar,l.ue,l.cant]; }); n++; });
@@ -2046,10 +2059,13 @@ VIEWS.desp=function(){
     var cal=planillasCalc(), fechas=uniq(cal.map(function(c){ return c.pl.fecha; })).sort();
     h+='<h2>Vehículos</h2><div class="tabs"><span class="chip btn2 '+(!DF.fecha?"sel":"")+'" data-act="dfecha" data-f="">Todas las fechas</span>'+fechas.map(function(f){ return '<span class="chip btn2 '+(DF.fecha===f?"sel":"")+'" data-act="dfecha" data-f="'+f+'">'+f.slice(5)+'</span>'; }).join("")+'</div>';
     var placas=uniq(cal.filter(function(c){ return plateOk(c.pl.placa); }).map(function(c){ return c.pl.placa; })).sort();
+    h=h.replace('<h2>Vehículos</h2>','<h2>Vehículos</h2>'+conciliacionHtml()); /* diferencias entre lo separado y lo que se despacha */
+    h+='<div class="tabs"><span class="chip btn2 '+(!DF.placa?"sel":"")+'" data-act="dplaca" data-p="">Todas las placas</span>'+uniq(cal.map(function(c){ return c.pl.placa; })).sort().map(function(p){ return '<span class="chip btn2 '+(DF.placa===p?"sel":"")+'" data-act="dplaca" data-p="'+esc(p)+'">'+esc(p)+'</span>'; }).join("")+'</div>'+barraSeleccionHtml(cal);
     h+='<div class="card"><b>Vehículos de las planillas</b><p class="small muted">La capacidad (kg), la cubicación (m³) y los datos del conductor se guardan una vez por placa y no se vuelven a preguntar. Se administran en Administración → Vehículos.</p>'+placas.map(function(p){ var vv=S.veh[p]||{}, fl=faltasVeh(vv), c=S.cap[p]||{}; return '<div class="row" style="margin-top:8px;align-items:center"><span class="mono grow"><b>'+p+'</b> <small class="muted">'+esc(vv.conductor||"sin conductor")+(c.kg?' · '+nf(c.kg)+' kg':'')+(c.m3?' · '+nf(c.m3,1)+' m³':'')+'</small></span><span class="chip '+(fl.length?"st-nov":"st-ok")+'">'+(fl.length?"Faltan datos":"Completo")+'</span><button class="btn ghost sm" data-act="vhplaca" data-p="'+p+'">'+(fl.length||!(c.kg||c.m3)?"Completar":"Ver")+'</button></div>'; }).join("")+'</div>';
     cal.forEach(function(c,i){
-      if(DF.fecha&&c.pl.fecha!==DF.fecha) return;
+      if(DF.fecha&&c.pl.fecha!==DF.fecha) return; if(DF.placa&&c.pl.placa!==DF.placa) return;
       var u=c.v.u, bc=c.v.k==="des"?"w":c.v.k==="sob"?"b":c.v.k==="bien"?"u":"", tk=tareaDePlanilla(c.pl);
+      if(!tk&&c.items.length) h+='<div class="row" style="margin-top:6px"><button class="btn ghost sm" data-act="selpl" data-n="'+esc(c.pl.num)+'">'+(SELP[c.pl.num]?'☑ Elegido':'☐ Elegir')+' · '+esc(c.pl.placa)+'</button></div>';
       h+='<button class="tile" data-act="abrirpl" data-i="'+i+'" style="flex-wrap:wrap"><div class="ic">⛟</div><div style="flex:1;min-width:0"><b>'+esc(c.pl.placa)+' · planilla '+esc(c.pl.num)+'</b><span>'+c.pl.fecha+' · '+c.conLin+' de '+c.pl.facs.length+' facturas cargadas · '+nf(c.c.und)+' u. · '+nf(c.c.cj)+' cajas</span></div><span class="chip '+c.v.cls+'">'+c.v.t+(u!=null?" "+pct(u):"")+'</span>'+(tk?'<div style="width:100%;margin-top:8px" class="row"><span class="chip info">Cargue: '+esc(tk.datos.asignadoNombre||"")+'</span>'+estadoChip(tk.datos.estado)+'<span class="chip">'+(tk.datos.ok+tk.datos.parc+tk.datos.no)+'/'+tk.datos.total+'</span></div>':'')+(u!=null?'<div class="bar '+bc+'" style="width:100%;margin-top:8px"><i style="width:'+Math.min(100,Math.round(u*100))+'%"></i></div>':'')+'</button>';
     });
     h+='<p class="small muted">Las planillas con cobertura menor a '+pct(S.umb.cob)+' figuran como "Datos incompletos" porque faltan facturas por cargar.</p>';
@@ -2072,6 +2088,7 @@ VIEWS.placa=function(){
   if(v.k==="inc") h+='<p class="small muted">Solo se cargaron '+cal.conLin+' de '+pl.facs.length+' facturas ('+pct(cal.cob)+'): falta cargar las demás para evaluar.</p>';
   h+='</div><div class="kpis"><div class="kpi"><b>'+cal.conLin+'/'+pl.facs.length+'</b><span>Facturas</span></div><div class="kpi"><b>'+nf(cal.items.length)+'</b><span>Referencias</span></div><div class="kpi"><b>'+nf(c.und)+'</b><span>Unidades</span></div><div class="kpi"><b>'+nf(c.cj)+'</b><span>Cajas</span></div><div class="kpi"><b>'+nf(c.su)+'</b><span>Sueltas</span></div><div class="kpi"><b>'+nf(c.kg)+'</b><span>kg</span></div><div class="kpi"><b>'+nf(c.m3,1)+'</b><span>m³</span></div></div>';
   h+=avisosCarga(c);
+  h+='<button class="btn ghost block" data-act="imprimirconductor">Imprimir listado para el conductor (con los documentos)</button>';
   h+='<h2>Segundo alistamiento (cargue)</h2>';
   if(tk){ h+=tareaHtml(tk,'data-act="vertarea" data-id="'+esc(tk.id)+'"')+(tk.datos.asignadoId?'<div class="sp"></div><button class="btn ghost block" style="color:#c0392b;border-color:#c0392b" data-act="liberarpl">Quitar a '+esc(tk.datos.asignadoNombre||"")+' y dejar disponible</button><p class="small muted">Sirve aunque ya haya empezado: lo marcado se conserva y otro auxiliar lo continúa.</p><div class="sp"></div><button class="btn ghost block" style="color:#c0392b;border-color:#c0392b" data-act="reiniciarpl">Reiniciar el cargue desde cero</button><div class="sp"></div><button class="btn ghost block" style="color:#c0392b;border-color:#c0392b" data-act="eliminarcargue" data-id="'+esc(tk.id)+'">Eliminar el cargue</button><p class="small muted">Borra todo el avance (aunque ya haya empezado) y el auxiliar vuelve a elegir consolidado o por factura. Se mantiene quien lo ejecuta.</p>':''); }
   else if(!cal.items.length) h+='<p class="small muted">Esta planilla aún no tiene líneas cargadas.</p>';
@@ -2135,7 +2152,7 @@ ACT.cargapla=function(){
     });
     if(!orden.length){ toast(errs[0]||"No hay planillas de tu centro de operación en el archivo",4500); return; }
     S.desp.planillas=orden.map(function(k){ return mp[k]; }).sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:String(x.num).localeCompare(String(y.num),undefined,{numeric:true}); });
-    registrarVehiculos(S.desp.planillas).catch(function(){}); traerDocs().then(function(){ render(); }).catch(function(){}); LS.set("ops_desp",S.desp);
+    registrarVehiculos(S.desp.planillas).catch(function(){}); traerDocs().then(function(){ render(); avisoConciliacion(); }).catch(function(){}); LS.set("ops_desp",S.desp);
     toast(S.desp.planillas.filter(function(p){ return p.co===co; }).length+" planillas de "+((ciudadPorCo(co)||{nombre:co}).nombre)+" ("+S.desp.planillas.filter(function(p){ return p.co===co&&p.tipo==="PLI"; }).length+" PLI)"+(ajenas?" · "+nf(ajenas)+" filas de otros C.O. omitidas":"")+(anul?" · "+anul+" anuladas omitidas":"")+(errs.length?" · "+errs.join("; "):""),5000); render();
   });
 };ACT.cargafac=function(){
@@ -2215,6 +2232,155 @@ ACT.eliminarcargue=async function(el,d){
   catch(e){ toast("No se pudo eliminar: "+(e.message||e)); }
 };
 
+/* ===== 62_despacho2.js ===== */
+/* ---------- Despacho (2): elegir vehiculos por placa, conciliacion con el alistamiento, listado para el conductor y reporte ---------- */
+var CON={docs:null}, SELP={}, REPD={q:"",placa:"",fecha:"",modo:"det"};
+
+/* ===== Publicar varios vehiculos a la vez ===== */
+async function publicarPl(cal,aux){
+  var pl=cal.pl, sid="D"+pl.num, co=coActual();
+  if(!cal.items.length||tareaDePlanilla(pl)||(await DB.get("ops_tareas",sid+"--SIN"))) return 0;
+  var items=cal.items.map(function(i){ return Object.assign({},i,{tipos:"FAC",seq:0,zona:"",cemp:avisoEmpaque(i.ref)}); });
+  var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:cl[f]||"",l:S.desp.lineas[f]}; });
+  var doc=tareaDoc("despacho",sid,"Cargue "+pl.placa+" · "+etiquetaPl(pl),co,aux,items,{placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
+  await DB.set("ops_tareas",doc.id,doc.datos); return 1;
+}
+function barraSeleccionHtml(cal){
+  var vis=cal.filter(function(c){ return (!DF.fecha||c.pl.fecha===DF.fecha)&&(!DF.placa||c.pl.placa===DF.placa); });
+  var libres=vis.filter(function(c){ return !tareaDePlanilla(c.pl)&&c.items.length; });
+  var n=libres.filter(function(c){ return SELP[c.pl.num]; }).length;
+  if(!libres.length) return "";
+  var ops=usuariosDe(coActual(),"operario");
+  return '<div class="card gold"><b>Elegir vehículos y asignar</b><p class="small muted">Marca «Elegir» en cada vehículo (o todos los de la vista) y publícalos de una vez: quedan disponibles para cualquier auxiliar o asignados a una persona.</p>'+
+    '<div class="row"><button class="btn ghost sm" data-act="selpltodos">☑ Elegir los '+libres.length+' de la vista</button><button class="btn ghost sm" data-act="selplnada">Quitar selección</button></div><div class="sp"></div>'+
+    '<div class="row"><select id="selsel" class="grow"><option value="">Disponible para que cualquier auxiliar lo tome</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">Asignar a '+esc(u.nombre)+'</option>'; }).join("")+'</select><button class="btn gold sm" data-act="enviarsel" '+(n?'':'disabled')+'>Publicar '+n+'</button></div></div>';
+}
+ACT.selpl=function(el,d){ var n=d("n"); if(SELP[n]) delete SELP[n]; else SELP[n]=1; render(); };
+ACT.selplnada=function(){ SELP={}; render(); };
+ACT.selpltodos=function(){ planillasCalc().forEach(function(c){ if((!DF.fecha||c.pl.fecha===DF.fecha)&&(!DF.placa||c.pl.placa===DF.placa)&&!tareaDePlanilla(c.pl)&&c.items.length) SELP[c.pl.num]=1; }); render(); };
+ACT.dplaca=function(el,d){ DF.placa=d("p"); render(); };
+ACT.enviarsel=async function(){
+  var sel=$("#selsel"), aux=sel?sel.value:"", cal=planillasCalc().filter(function(c){ return SELP[c.pl.num]; });
+  if(!cal.length){ toast("Elige al menos un vehículo"); return; }
+  try{ var n=0; for(var i=0;i<cal.length;i++) n+=await publicarPl(cal[i],aux); SELP={}; toast(n+" vehículo"+(n===1?"":"s")+" publicado"+(n===1?"":"s")+(aux?" a "+nombreDe(aux):" (disponibles para los auxiliares)")); await cargarDesp(); }
+  catch(e){ toast("No se pudo publicar: "+(e.message||e)); }
+};
+
+/* ===== Conciliacion: lo separado en el alistamiento contra lo que se va a despachar ===== */
+function sumaRefs(ls){ var m={}; (ls||[]).forEach(function(a){ m[a[0]]=(m[a[0]]||0)+(+a[4]||0); }); return m; }
+function conciliar(){
+  if(!CON.docs) return null;
+  var co=coActual(), pls=(S.desp.planillas||[]).filter(function(p){ return (!p.co||p.co===co)&&!p.revision; });
+  if(!pls.length) return null;
+  var enPl={}, ord=[]; pls.forEach(function(p){ p.facs.forEach(function(f){ if(!enPl[f]){ enPl[f]=p; ord.push(f); } }); });
+  var sinPlanilla=Object.keys(CON.docs).filter(function(k){ return !enPl[k]; });
+  var sinAlistar=ord.filter(function(f){ return !CON.docs[f]; });
+  var dif=[];
+  ord.forEach(function(f){
+    var sd=CON.docs[f], dl=S.desp.lineas[f]; if(!sd||!dl) return;
+    var ls=(sd.l||[]).map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],cant:a[4],bod:"",grupo:"",linea:"",doc:f,t:sd.t||"FAC"}; }), dd=desglosar(ls,co);
+    var a=sumaRefs(dd.lineas.map(function(l){ return [l.ref,l.desc,l.bar,l.ue,l.cant]; })), b=sumaRefs(dl), ks=Object.keys(a).concat(Object.keys(b).filter(function(k){ return a[k]===undefined; }));
+    ks.forEach(function(k){ if((a[k]||0)!==(b[k]||0)) dif.push({doc:f,ref:k,sep:a[k]||0,desp:b[k]||0}); });
+  });
+  var tot=0; sinPlanilla.forEach(function(k){ (CON.docs[k].l||[]).forEach(function(a){ tot+=(+a[4]||0); }); });
+  return {sinPlanilla:sinPlanilla,sinAlistar:sinAlistar,dif:dif,unidSin:tot};
+}
+function listaDocs(ks,n){ var t=ks.slice(0,n).map(function(k){ var c=(S.desp.clientes||{})[k]||(CON.docs&&CON.docs[k]&&CON.docs[k].cli)||""; return '<span class="mono">'+esc(k)+'</span>'+(c?' <small class="muted">'+esc(c)+'</small>':''); }).join(" · "); return t+(ks.length>n?' … y '+(ks.length-n)+' más':''); }
+function conciliacionHtml(){
+  var c=conciliar(); if(!c) return "";
+  var ok=!c.sinPlanilla.length&&!c.sinAlistar.length&&!c.dif.length;
+  if(ok) return '<div class="hint" style="border-color:#2e7d32"><b>Conciliación al día:</b> todo lo separado en el alistamiento está en alguna planilla y las cantidades coinciden.</div>';
+  var h='<div class="card" style="border-left:5px solid #c0392b"><b>Diferencias entre lo separado y lo que se va a despachar</b>';
+  if(c.sinPlanilla.length) h+='<p class="small"><b>'+c.sinPlanilla.length+' documento'+(c.sinPlanilla.length>1?'s':'')+' separado'+(c.sinPlanilla.length>1?'s':'')+' sin planilla</b> ('+nf(c.unidSin)+' unidades): '+listaDocs(c.sinPlanilla,12)+'</p><button class="btn ghost sm" data-act="crearrev">Crear despacho de revisión con estos documentos</button><p class="small muted">Si de verdad no se van a despachar, el despacho de revisión te deja ver y revisar esa mercancía como un vehículo más (no cuenta como un vehículo real).</p>';
+  if(c.sinAlistar.length) h+='<p class="small"><b>'+c.sinAlistar.length+' documento'+(c.sinAlistar.length>1?'s':'')+' en planilla '+(c.sinAlistar.length>1?'que no pasaron':'que no pasó')+' por el alistamiento</b>: '+listaDocs(c.sinAlistar,12)+'</p>';
+  if(c.dif.length){ var dd={}; c.dif.forEach(function(x){ (dd[x.doc]=dd[x.doc]||[]).push(x); });
+    h+='<p class="small"><b>'+Object.keys(dd).length+' documento'+(Object.keys(dd).length>1?'s':'')+' con cantidades distintas</b> (separado → despacho):</p>'+Object.keys(dd).slice(0,8).map(function(k){ return '<div class="small"><span class="mono">'+esc(k)+'</span>: '+dd[k].slice(0,5).map(function(x){ return esc(x.ref)+' '+nf(x.sep)+' → '+nf(x.desp); }).join(", ")+(dd[k].length>5?' …':'')+'</div>'; }).join(""); }
+  return h+'</div>';
+}
+function avisoConciliacion(){ var c=conciliar(); if(!c) return; var n=c.sinPlanilla.length+c.sinAlistar.length+(c.dif.length?1:0); if(n) toast("Ojo: hay diferencias entre lo separado y lo que se despachará"+(c.sinPlanilla.length?" · "+c.sinPlanilla.length+" documentos sin planilla":"")+(c.sinAlistar.length?" · "+c.sinAlistar.length+" sin alistar":"")+(c.dif.length?" · cantidades distintas":""),6000); }
+ACT.crearrev=function(){
+  var c=conciliar(); if(!c||!c.sinPlanilla.length){ toast("No hay documentos sin planilla"); return; }
+  if(!confirm("Se creará un despacho de revisión con "+c.sinPlanilla.length+" documentos separados que no están en ninguna planilla. ¿Continuar?")) return;
+  var co=coActual(), f=new Date().toISOString().slice(0,10), num="REV-"+f.replace(/-/g,"");
+  c.sinPlanilla.forEach(function(k){ if(!S.desp.lineas[k]){ var sd=CON.docs[k], ls=(sd.l||[]).map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],cant:a[4],bod:"",grupo:"",linea:"",doc:k,t:sd.t||"FAC"}; }), dd=desglosar(ls,co); S.desp.lineas[k]=dd.lineas.map(function(l){ return [l.ref,l.desc,l.bar,l.ue,l.cant]; }); if(sd.cli) S.desp.clientes[k]=sd.cli; } });
+  S.desp.planillas=(S.desp.planillas||[]).filter(function(p){ return !(p.revision&&p.num===num&&p.co===co); });
+  S.desp.planillas.push({num:num,tipo:"REV",co:co,fecha:f,placa:"REVISIÓN",facs:c.sinPlanilla.slice(),revision:true});
+  S.desp.planillas.sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:String(x.num).localeCompare(String(y.num),undefined,{numeric:true}); });
+  LS.set("ops_desp",S.desp); toast("Despacho de revisión creado: búscalo en «Vehículos» como REVISIÓN"); render();
+};
+
+/* ===== Listado para el conductor: la mercancia del vehiculo, por documento ===== */
+var CDD={i:0};
+function grupoVehiculo(cal0){
+  /* todas las planillas del mismo vehiculo y fecha (por ejemplo PLF + PLI) */
+  return planillasCalc().filter(function(c){ return c.pl.placa===cal0.pl.placa&&c.pl.fecha===cal0.pl.fecha; });
+}
+ACT.imprimirconductor=function(){ CDD.i=PL.i; go("conductor"); };
+ACT.cdimprimir=function(){ window.print(); };
+function cajasUni(cant,ue){ ue=ue>1?ue:1; var c=ue>1?Math.floor(cant/ue):0; return {c:c,s:cant-c*ue,ue:ue}; }
+VIEWS.conductor=function(){
+  var cal0=planillasCalc()[CDD.i]; topbar("Listado para el conductor",subtituloUsuario(),true);
+  if(!cal0){ app('<div class="empty">Abre un vehículo y elige «Imprimir listado para el conductor».</div>'); return; }
+  var grp=grupoVehiculo(cal0), pl=cal0.pl, vv=S.veh[pl.placa]||{}, ciudad=(ciudadPorCo(coActual())||{nombre:""}).nombre;
+  var cl=S.desp.clientes||{}, docs=[], tot={c:0,s:0,u:0}, mp={};
+  grp.forEach(function(g){ g.pl.facs.forEach(function(f){ var ls=S.desp.lineas[f]; if(!ls) { docs.push({f:f,t:g.pl.tipo||"PLF",pl:g.pl.num,c:cl[f]||"",ls:[],falta:true}); return; } docs.push({f:f,t:g.pl.tipo||"PLF",pl:g.pl.num,c:cl[f]||"",ls:ls}); }); });
+  docs.forEach(function(d){ d.u=0; d.ls.forEach(function(a){ var m=S.mae[a[0]]||{}, ue=a[3]>0?a[3]:(m.u||1); d.u+=a[4]; var k=a[0]; if(!mp[k]) mp[k]={ref:k,desc:a[1]||m.d||"",ue:ue,t:0}; mp[k].t+=a[4]; }); });
+  var items=Object.keys(mp).sort(ordenRef).map(function(k){ return mp[k]; });
+  items.forEach(function(it){ var x=cajasUni(it.t,it.ue); tot.c+=x.c; tot.s+=x.s; tot.u+=it.t; });
+  var h='<div class="noprint"><div class="row"><h1 class="grow" style="margin:6px 0">Listado para el conductor</h1><button class="btn gold sm" data-act="cdimprimir">Imprimir</button></div><div class="hint" style="margin-bottom:8px"><b>Antes de imprimir:</b> Tamaño del papel <b>Carta (Letter)</b>, Diseño <b>Horizontal</b>, Escala <b>100%</b>.</div></div>';
+  h+='<div class="lst-sheet"><div class="lst-title">LISTADO DE MERCANCÍA PARA EL CONDUCTOR · '+esc(String(ciudad).toUpperCase())+'</div>'+
+    '<div class="lst-head"><table class="lst-res"><tr><th>Placa</th><td><b>'+esc(pl.placa)+'</b></td><th>Conductor</th><td>'+esc(vv.conductor||"")+'</td><th>Fecha</th><td>'+esc(pl.fecha)+'</td></tr><tr><th>Planillas</th><td>'+esc(grp.map(function(g){ return etiquetaPl(g.pl); }).join(" · "))+'</td><th>Documentos</th><td>'+nf(docs.length)+'</td><th>Unidades</th><td>'+nf(tot.u)+'</td></tr><tr><th>Cajas</th><td>'+nf(tot.c)+'</td><th>Sueltas</th><td>'+nf(tot.s)+'</td><th>Generado</th><td>'+esc(new Date().toLocaleString("es-CO",{dateStyle:"short",timeStyle:"short"}))+'</td></tr></table></div>';
+  h+='<div class="lst-title" style="margin-top:10px;font-size:14px">1. Documentos que lleva el vehículo</div><table class="lst"><thead><tr><th class="ck"></th><th>Documento</th><th>Planilla</th><th class="dc">Cliente</th><th class="n">Referencias</th><th class="n">Unidades</th></tr></thead><tbody>'+
+    docs.map(function(d){ return '<tr><td class="ck"><span class="bx">☐</span></td><td><b>'+esc(d.f)+'</b></td><td>'+esc(d.t)+'</td><td class="dc">'+esc(d.c)+(d.falta?' <i>(sin líneas cargadas)</i>':'')+'</td><td class="n">'+nf(d.ls.length)+'</td><td class="n">'+nf(d.u)+'</td></tr>'; }).join("")+'</tbody></table>';
+  h+='<div class="lst-title" style="margin-top:12px;font-size:14px">2. Consolidado del vehículo</div><table class="lst"><thead><tr><th class="c-ref">Referencia</th><th class="dc">Descripción</th><th class="n c-ue">U.E</th><th class="n c-q">Cajas</th><th class="n c-q">Unidades</th></tr></thead><tbody>'+
+    items.map(function(it){ var x=cajasUni(it.t,it.ue); return '<tr><td><b>'+esc(it.ref)+'</b></td><td class="dc">'+esc(it.desc)+'</td><td class="n">'+esc(it.ue)+'</td><td class="n">'+qty(x.c)+'</td><td class="n">'+qty(x.s)+'</td></tr>'; }).join("")+'</tbody></table>';
+  h+='<div class="lst-title" style="margin-top:12px;font-size:14px;page-break-before:always">3. Detalle por documento</div>'+docs.filter(function(d){ return d.ls.length; }).map(function(d){
+    return '<div style="margin-top:10px;page-break-inside:avoid"><b>'+esc(d.f)+'</b> · '+esc(d.t)+(d.c?' · '+esc(d.c):'')+'<table class="lst"><thead><tr><th class="c-ref">Referencia</th><th class="dc">Descripción</th><th class="n c-ue">U.E</th><th class="n c-q">Cajas</th><th class="n c-q">Unidades</th></tr></thead><tbody>'+
+      d.ls.map(function(a){ var m=S.mae[a[0]]||{}, ue=a[3]>0?a[3]:(m.u||1), x=cajasUni(a[4],ue); return '<tr><td><b>'+esc(a[0])+'</b></td><td class="dc">'+esc(a[1]||m.d||"")+'</td><td class="n">'+esc(ue)+'</td><td class="n">'+qty(x.c)+'</td><td class="n">'+qty(x.s)+'</td></tr>'; }).join("")+'</tbody></table></div>'; }).join("");
+  h+='<div class="row" style="margin-top:28px"><div class="grow">Entregó: ______________________</div><div class="grow">Recibió (conductor): ______________________</div></div></div>';
+  app(h);
+};
+
+/* ===== Reporte de despacho (consolidado con filtros) ===== */
+function filasReporte(){
+  var cl=S.desp.clientes||{}, out=[];
+  planillasCalc().forEach(function(c){ var pl=c.pl, vv=S.veh[pl.placa]||{};
+    pl.facs.forEach(function(f){ (S.desp.lineas[f]||[]).forEach(function(a){ var m=S.mae[a[0]]||{}, ue=a[3]>0?a[3]:(m.u||1), x=cajasUni(a[4],ue);
+      out.push({fecha:pl.fecha,planilla:etiquetaPl(pl),placa:pl.placa,conductor:vv.conductor||"",doc:f,cliente:cl[f]||"",ref:a[0],desc:a[1]||m.d||"",ue:ue,cajas:x.c,sueltas:x.s,unid:a[4],grupo:m.g||"",linea:m.l||""}); }); }); });
+  return out;
+}
+function reporteFiltrado(){
+  var q=normH(REPD.q); return filasReporte().filter(function(r){ if(REPD.placa&&r.placa!==REPD.placa) return false; if(REPD.fecha&&r.fecha!==REPD.fecha) return false; return !q||normH(r.ref+" "+r.desc+" "+r.doc+" "+r.cliente+" "+r.placa+" "+r.grupo+" "+r.linea).indexOf(q)>=0; });
+}
+function reporteAgrupado(rs){
+  var m={}; rs.forEach(function(r){ var o=m[r.ref]; if(!o) o=m[r.ref]={ref:r.ref,desc:r.desc,ue:r.ue,unid:0,docs:{},placas:{},grupo:r.grupo,linea:r.linea}; o.unid+=r.unid; o.docs[r.doc]=1; o.placas[r.placa]=1; });
+  return Object.keys(m).sort(ordenRef).map(function(k){ var o=m[k], x=cajasUni(o.unid,o.ue); o.cajas=x.c; o.sueltas=x.s; o.nd=Object.keys(o.docs).length; o.np=Object.keys(o.placas).length; return o; });
+}
+ACT.irrepdesp=function(){ REPD={q:"",placa:"",fecha:"",modo:"det"}; go("repdesp"); };
+ACT.rdmodo=function(el,d){ REPD.modo=d("v"); render(); };
+ACT.rdexcel=function(){
+  var rs=reporteFiltrado(); if(!rs.length){ toast("No hay filas con este filtro"); return; }
+  if(REPD.modo==="ref") descargarXlsx("Reporte_despacho_por_referencia.xlsx","Por referencia",[["Referencia","Descripcion","U.E","Cajas","Sueltas","Unidades","Documentos","Vehiculos","Grupo","Linea"]].concat(reporteAgrupado(rs).map(function(o){ return [o.ref,o.desc,o.ue,o.cajas,o.sueltas,o.unid,o.nd,o.np,o.grupo,o.linea]; })));
+  else descargarXlsx("Reporte_despacho.xlsx","Detalle",[["Fecha","Planilla","Placa","Conductor","Documento","Cliente","Referencia","Descripcion","U.E","Cajas","Sueltas","Unidades","Grupo","Linea"]].concat(rs.map(function(r){ return [r.fecha,r.planilla,r.placa,r.conductor,r.doc,r.cliente,r.ref,r.desc,r.ue,r.cajas,r.sueltas,r.unid,r.grupo,r.linea]; })));
+};
+VIEWS.repdesp=function(){
+  topbar("Reporte de despacho",subtituloUsuario(),true);
+  var todas=filasReporte(), rs=reporteFiltrado(), placas=uniq(todas.map(function(r){ return r.placa; })).sort(), fechas=uniq(todas.map(function(r){ return r.fecha; })).sort();
+  var h='<h1>Reporte de despacho</h1><p class="muted small">Consolidado de todos los vehículos de las planillas cargadas. Filtra por referencia, descripción, documento, cliente, placa o fecha, y descárgalo en Excel.</p>';
+  if(!todas.length){ app(h+'<div class="empty">Aún no hay planillas con líneas cargadas. Carga las planillas en Despacho.</div>'); return; }
+  h+='<label class="lb">Buscar</label><input type="search" id="rdq" placeholder="Referencia, descripción, documento, cliente…" value="'+esc(REPD.q)+'">'+
+    '<div class="row" style="margin-top:8px"><div class="grow"><label class="lb">Placa</label><select id="rdp"><option value="">Todas</option>'+placas.map(function(p){ return '<option'+(REPD.placa===p?' selected':'')+'>'+esc(p)+'</option>'; }).join("")+'</select></div><div class="grow"><label class="lb">Fecha</label><select id="rdf"><option value="">Todas</option>'+fechas.map(function(f){ return '<option'+(REPD.fecha===f?' selected':'')+'>'+esc(f)+'</option>'; }).join("")+'</select></div></div>'+
+    '<div class="seg" style="margin-top:8px"><span class="chip btn2 '+(REPD.modo==="det"?"sel":"")+'" data-act="rdmodo" data-v="det">Detalle por documento</span><span class="chip btn2 '+(REPD.modo==="ref"?"sel":"")+'" data-act="rdmodo" data-v="ref">Total por referencia</span></div>';
+  var u=0,c=0,s=0,docs={},pls={}; rs.forEach(function(r){ u+=r.unid; c+=r.cajas; s+=r.sueltas; docs[r.doc]=1; pls[r.placa]=1; });
+  h+='<div class="kpis"><div class="kpi"><b>'+nf(rs.length)+'</b><span>Filas</span></div><div class="kpi"><b>'+nf(Object.keys(docs).length)+'</b><span>Documentos</span></div><div class="kpi"><b>'+nf(Object.keys(pls).length)+'</b><span>Vehículos</span></div><div class="kpi"><b>'+nf(u)+'</b><span>Unidades</span></div></div><button class="btn gold block" data-act="rdexcel">Descargar Excel (con este filtro)</button><div class="sp"></div>';
+  if(REPD.modo==="ref"){ var ag=reporteAgrupado(rs);
+    h+='<p class="small muted">'+nf(ag.length)+' referencias'+(ag.length>200?' (se muestran 200; el Excel trae todas)':'')+'</p>'+ag.slice(0,200).map(function(o){ return '<div class="line" style="cursor:default"><div style="min-width:0"><div class="r">'+esc(o.ref)+'</div><div class="d">'+esc(o.desc)+'</div><div class="row"><span class="chip info">'+o.nd+' doc.</span><span class="chip info">'+o.np+' veh.</span></div></div><div class="q">'+esc(fmtQty(o.unid,o.ue))+'</div></div>'; }).join(""); }
+  else h+='<p class="small muted">'+nf(rs.length)+' filas'+(rs.length>200?' (se muestran 200; el Excel trae todas)':'')+'</p>'+rs.slice(0,200).map(function(r){ return '<div class="line" style="cursor:default"><div style="min-width:0"><div class="r">'+esc(r.ref)+' <small class="muted">'+esc(r.doc)+'</small></div><div class="d">'+esc(r.desc)+'</div><div class="row"><span class="chip info">'+esc(r.placa)+'</span><span class="chip info">'+esc(r.fecha.slice(5))+'</span>'+(r.cliente?'<span class="chip info">'+esc(r.cliente)+'</span>':'')+'</div></div><div class="q">'+esc(fmtQty(r.unid,r.ue))+'</div></div>'; }).join("");
+  app(h);
+  enlazarBuscador("rdq",function(v){ REPD.q=v; });
+  var sp=$("#rdp"); if(sp) sp.onchange=function(){ REPD.placa=sp.value; render(); }; var sf=$("#rdf"); if(sf) sf.onchange=function(){ REPD.fecha=sf.value; render(); };
+};
+
 /* ===== 65_listado.js ===== */
 /* ---------- rutas por poblacion y listado de separacion impreso (para bodegas sin RF ni matriz formal) ---------- */
 function claveCiu(c){ return normH(c).replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); }
@@ -2243,7 +2409,7 @@ VIEWS.rutas=function(){
 ACT.rtfiltro=function(el,d){ RT.f=d("f"); render(); };
 function hojaRuta(k){
   var p=k?S.pobl[k]:{}, nuevo=!k, rutas=Array.from(new Set(Object.keys(S.pobl).map(function(x){ return S.pobl[x].ruta; }).filter(Boolean))).sort();
-  var bg=abrirSheet('<h3>'+(nuevo?"Nueva población":esc(p.ciudad))+'</h3>'+(nuevo?'<label class="lb">Población</label><input id="rtC" type="text">':'')+'<label class="lb">Ruta</label><input id="rtR" type="text" list="rtLista" value="'+esc(p.ruta||"")+'" autocapitalize="characters"><datalist id="rtLista">'+rutas.map(function(r){ return '<option value="'+esc(r)+'">'; }).join("")+'</datalist><div class="sp"></div><button class="btn gold block" id="rtOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="rtX">Cancelar</button>'+(nuevo?'':'<div class="sp"></div><button class="btn red block" id="rtDel">Eliminar población</button>'));
+  var bg=abrirSheet('<h3>'+(nuevo?"Nueva población":esc(p.ciudad))+'</h3>'+(nuevo?'<label class="lb">Población</label><input id="rtC" type="text">':'')+'<label class="lb">Ruta</label><input id="rtR" type="text" list="rtLista" value="'+esc(p.ruta||"")+'" autocapitalize="characters"><datalist id="rtLista">'+rutas.map(function(r){ return '<option value="'+esc(r)+'">'; }).join("")+'</datalist><div class="sp"></div><button class="btn gold block" id="rtOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="rtX">Cancelar</button>'+((nuevo||!esAdmin())?'':'<div class="sp"></div><button class="btn red block" id="rtDel">Eliminar población</button>'));
   $("#rtX",bg).onclick=cerrarSheet;
   if($("#rtDel",bg)) $("#rtDel",bg).onclick=function(){ borrarUno("poblaciones",k,"la población "+p.ciudad,function(){ delete S.pobl[k]; cerrarSheet(); render(); }); };
   $("#rtOk",bg).onclick=async function(){
@@ -2468,7 +2634,7 @@ VIEWS.rutas=function(){
   var ks=Object.keys(S.pobl), sin=ks.filter(function(k){ return !S.pobl[k].ruta; }).length, lista=rutasFiltradas();
   var cab='<h1>Rutas por población</h1><p class="muted small">Cada población pertenece a una ruta. Se usa para filtrar el listado de separación. Las poblaciones nuevas que lleguen en los archivos se agregan solas y quedan pendientes de ruta.</p>';
   var side='<div class="kpis kp2"><div class="kpi"><b>'+nf(ks.length)+'</b><span>Poblaciones</span></div><div class="kpi"><b>'+nf(new Set(ks.map(function(k){ return S.pobl[k].ruta; }).filter(Boolean)).size)+'</b><span>Rutas</span></div><div class="kpi"><b>'+nf(sin)+'</b><span>Sin ruta</span></div></div>'+
-    '<div class="sp"></div><button class="btn gold block" data-act="rtnuevo">+ Agregar población</button><div class="sp"></div>'+BTN_BORRAR+'data-act="rtborrar" '+(lista.length?'':'disabled')+'>Eliminar las '+nf(lista.length)+' de la lista</button>'+
+    '<div class="sp"></div><button class="btn gold block" data-act="rtnuevo">+ Agregar población</button><div class="sp"></div>'+(esAdmin()?BTN_BORRAR+'data-act="rtborrar" '+(lista.length?'':'disabled')+'>Eliminar las '+nf(lista.length)+' de la lista</button>':'')+
     '<label class="lb">Mostrar</label><div class="seg vseg">'+[["todas","Todas"],["sin","Sin ruta ("+sin+")"]].map(function(f){ return '<span class="chip btn2 '+(RT.f===f[0]?"sel":"")+'" data-act="rtfiltro" data-f="'+f[0]+'">'+f[1]+'</span>'; }).join("")+'</div>'+
     '<label class="lb">Buscar</label><input type="search" id="rtq" placeholder="Población o ruta" value="'+esc(RT.q)+'">'+
     '<div class="sp"></div><div class="card gold"><b>Cargar poblaciones y rutas (Excel)</b><p class="small muted">Columnas: Ciudad, Ruta (la hoja POBLACIONES de la macro).</p><button class="btn block" data-act="rtcargar">Cargar Excel</button><div class="sp"></div><button class="btn ghost sm" data-act="plantilla" data-t="poblaciones">Descargar plantilla</button></div>';
