@@ -1514,6 +1514,11 @@ ACT.mtmasivo=function(){
 /* ===== Autoalimentacion: lo que llega en un listado se registra solo ===== */
 async function registrarPendientes(items,co){
   var nuevosM=[], rellenar=[], nuevasL=[], M=await cargarMatriz(co);
+  /* Proteccion: si alguna referencia no aparece en el maestro local, se vuelve a leer el maestro de la nube antes de decidir que es nueva
+     (asi nunca se sobrescribe con datos en blanco un producto que ya existe) */
+  if(items.some(function(it){ return it.ref&&!S.mae[it.ref]; })){
+    var rows=await DB.list("maestro",{all:true}); if(rows){ var mm={}; rows.forEach(function(r){ mm[r.id]=r.datos; }); S.mae=mm; try{ LS.set("ops_mae",mm); }catch(e){} }
+  }
   items.forEach(function(it){
     var k=String(it.ref||"").toUpperCase(); if(!k||esOferta(k,it.desc)) return;
     var lim=function(x){ return x&&!/^SIN /i.test(x)?x:""; }, prev=S.mae[it.ref];
@@ -2372,7 +2377,7 @@ ACT.maemas=function(){ MAN+=100; render(); };
 ACT.maeborrar=async function(){
   var ls=maeFiltrados(); if(!ls.length){ toast("No hay productos en la lista"); return; } var todos=ls.length===Object.keys(S.mae).length;
   if(!pedirBorrado("¿Eliminar "+nf(ls.length)+" producto"+(ls.length>1?"s":"")+" del maestro?"+(todos?" Es TODO el maestro.":"")+" Si vuelven a aparecer en un listado se registrarán de nuevo como productos incompletos.",ls.length)) return;
-  try{ toast("Eliminando…",8000); await borrarIdsDe("maestro",ls,todos); ls.forEach(function(k){ delete S.mae[k]; }); LS.set("ops_mae",S.mae); toast(nf(ls.length)+" productos eliminados"); render(); }
+  try{ toast("Eliminando…",8000); await borrarIdsDe("maestro",ls,false); ls.forEach(function(k){ delete S.mae[k]; }); LS.set("ops_mae",S.mae); toast(nf(ls.length)+" productos eliminados"); render(); }
   catch(e){ toast("No se pudo eliminar: "+(e.message||e),4500); }
 };
 
@@ -2473,7 +2478,7 @@ VIEWS.rutas=function(){
 ACT.rtborrar=async function(){
   var ls=rutasFiltradas(); if(!ls.length){ toast("No hay poblaciones en la lista"); return; } var todos=ls.length===Object.keys(S.pobl).length;
   if(!pedirBorrado("¿Eliminar "+nf(ls.length)+" población"+(ls.length>1?"es":"")+" con su ruta?"+(todos?" Son TODAS.":"")+" Si vuelven a llegar en un listado se registrarán de nuevo, sin ruta.",ls.length)) return;
-  try{ toast("Eliminando…",6000); await borrarIdsDe("poblaciones",ls,todos); ls.forEach(function(k){ delete S.pobl[k]; }); toast(nf(ls.length)+" poblaciones eliminadas"); render(); }
+  try{ toast("Eliminando…",6000); await borrarIdsDe("poblaciones",ls,false); ls.forEach(function(k){ delete S.pobl[k]; }); toast(nf(ls.length)+" poblaciones eliminadas"); render(); }
   catch(e){ toast("No se pudo eliminar: "+(e.message||e),4500); }
 };
 
