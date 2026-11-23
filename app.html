@@ -1401,7 +1401,7 @@ function pendientesHtml(){
     if(r.maeEmp) it.push(['maestro','emp',nf(r.maeEmp)+' productos con cambio de unidad de empaque']);
     if(r.maeInc) it.push(['maestro','inc',nf(r.maeInc)+' productos con datos incompletos']);
   }
-  var cs=Object.keys(S.pobl).filter(function(k){ return !S.pobl[k].ruta; }).length; if(cs) it.push(['rutas','sin',cs+' poblaciones sin ruta']);
+  var cs=Object.keys(S.pobl).filter(function(k){ return visRuta(k)&&!S.pobl[k].ruta; }).length; if(cs) it.push(['rutas','sin',cs+' poblaciones sin ruta']);
   var rv=resumenVeh(); if(rv.inc||rv.al) it.push(['vehiculos','',(rv.inc?rv.inc+' vehículos con datos incompletos':'')+(rv.inc&&rv.al?' · ':'')+(rv.al?rv.al+' con documentos por vencer o vencidos':'')]);
   if(r.mtzSin) it.push(['matriz','sin',nf(r.mtzSin)+' referencias sin auxiliar ('+esc(co)+')']);
   if(!it.length) return '<div class="hint" style="margin-top:12px">Sin pendientes por completar.</div>';
@@ -1916,7 +1916,7 @@ async function crearSesiones(todas,detalle,omit,err){
       var co=cos[i], cn=(ciudadPorCo(co)||{nombre:co}).nombre;
       NUEVA.msg="Creando la sesión de "+cn+"…"; render();
       await cargarBase(false,co).catch(function(){});
-      await registrarCiudades(porCo[co]).catch(function(){});
+      await registrarCiudades(porCo[co],co).catch(function(){});
       await registrarOfertas(porCo[co],"listado",co).catch(function(){ return 0; });
       var r=await crearSesionDe(armarSesion(porCo[co],co,mismosProductos(porCo[co])),detalle);
       creadas.push(r);
@@ -2450,9 +2450,24 @@ VIEWS.repdesp=function(){
 function claveCiu(c){ return normH(c).replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); }
 function rutaDe(ciu){ var p=S.pobl[claveCiu(ciu)]; return (p&&p.ruta)||"SIN RUTA"; }
 /* Las poblaciones nuevas que llegan en un listado se registran solas (sin ruta) para asignarles ruta a mano */
-async function registrarCiudades(lineas){
-  var nv=[], vistos={}; lineas.forEach(function(l){ var c=String(l.ciu||"").trim(), k=claveCiu(c); if(!k||vistos[k]||S.pobl[k]) return; vistos[k]=1; nv.push({id:k,datos:{ciudad:c,ruta:"",origen:"listado",creadoEn:ahora()}}); });
-  if(!nv.length) return 0; await DB.setMany("poblaciones",nv); nv.forEach(function(n){ S.pobl[n.id]=n.datos; }); return nv.length;
+/* Poblaciones por ciudad: cada coordinador ve solo las poblaciones que han llegado en documentos de su centro de operacion */
+var CIUCO={};
+function visRuta(k){
+  if(esAdmin()) return true; var p=S.pobl[k]||{}, co=coActual();
+  if(p.cos&&p.cos.indexOf(co)>=0) return true;
+  return !!(CIUCO[co]&&CIUCO[co][k]);
+}
+async function cargarCiuCo(){
+  var co=coActual(), rs=await DB.list("ops_sesiones",{filter:{"datos->>co":"eq."+co},all:true}), m={};
+  rs.forEach(function(r){ Object.keys((r.datos&&r.datos.ciu)||{}).forEach(function(c){ m[claveCiu(c)]=1; }); });
+  CIUCO[co]=m;
+}
+async function registrarCiudades(lineas,co){
+  var cambios=[], vistos={}; lineas.forEach(function(l){ var c=String(l.ciu||"").trim(), k=claveCiu(c); if(!k||vistos[k]) return; vistos[k]=1;
+    var p=S.pobl[k];
+    if(!p) cambios.push({id:k,datos:{ciudad:c,ruta:"",origen:"listado",cos:co?[co]:[],creadoEn:ahora()}});
+    else if(co&&(p.cos||[]).indexOf(co)<0) cambios.push({id:k,datos:Object.assign({},p,{cos:(p.cos||[]).concat([co])})}); });
+  if(!cambios.length) return 0; await DB.setMany("poblaciones",cambios); cambios.forEach(function(n){ S.pobl[n.id]=n.datos; }); return cambios.length;
 }
 
 /* ===== Pantalla de rutas ===== */
@@ -2691,11 +2706,11 @@ ACT.vhborrar=async function(){
 /* ===== Rutas por poblacion ===== */
 function rutasFiltradas(){
   var q=normH(RT.q);
-  return Object.keys(S.pobl).filter(function(k){ var p=S.pobl[k]; if(RT.f==="sin"&&p.ruta) return false; return !q||normH(p.ciudad+" "+p.ruta).indexOf(q)>=0; }).sort(function(a,b){ return String(S.pobl[a].ciudad).localeCompare(String(S.pobl[b].ciudad)); });
+  return Object.keys(S.pobl).filter(function(k){ var p=S.pobl[k]; if(!visRuta(k)) return false; if(RT.f==="sin"&&p.ruta) return false; return !q||normH(p.ciudad+" "+p.ruta).indexOf(q)>=0; }).sort(function(a,b){ return String(S.pobl[a].ciudad).localeCompare(String(S.pobl[b].ciudad)); });
 }
 VIEWS.rutas=function(){
   topbar("Rutas por población",subtituloUsuario(),true);
-  var ks=Object.keys(S.pobl), sin=ks.filter(function(k){ return !S.pobl[k].ruta; }).length, lista=rutasFiltradas();
+  var ks=Object.keys(S.pobl).filter(visRuta), sin=ks.filter(function(k){ return !S.pobl[k].ruta; }).length, lista=rutasFiltradas();
   var cab='<h1>Rutas por población</h1><p class="muted small">Cada población pertenece a una ruta. Se usa para filtrar el listado de separación. Las poblaciones nuevas que lleguen en los archivos se agregan solas y quedan pendientes de ruta.</p>';
   var side='<div class="kpis kp2"><div class="kpi"><b>'+nf(ks.length)+'</b><span>Poblaciones</span></div><div class="kpi"><b>'+nf(new Set(ks.map(function(k){ return S.pobl[k].ruta; }).filter(Boolean)).size)+'</b><span>Rutas</span></div><div class="kpi"><b>'+nf(sin)+'</b><span>Sin ruta</span></div></div>'+
     '<div class="sp"></div><button class="btn gold block" data-act="rtnuevo">+ Agregar población</button><div class="sp"></div>'+(esAdmin()?BTN_BORRAR+'data-act="rtborrar" '+(lista.length?'':'disabled')+'>Eliminar las '+nf(lista.length)+' de la lista</button>':'')+
@@ -2760,7 +2775,7 @@ function alEntrar(v){
     else if(v==="matriz") abrirMatriz();
     else if(v==="usuarios"){ cargarUsuarios().then(function(){ var c=cur(); if(c&&c.v==="usuarios") render(); }).catch(function(){}); cargarClaves(); }
     else if(v==="vehiculos") cargarVeh();
-    else if(v==="rutas") cargarBase(false).then(function(){ var c=cur(); if(c&&c.v==="rutas") render(); }).catch(function(){});
+    else if(v==="rutas") Promise.all([cargarBase(false),cargarCiuCo()]).then(function(){ var c=cur(); if(c&&c.v==="rutas") render(); }).catch(function(){});
     else if(v==="ofertas"||v==="maestro") cargarBase(false).then(function(){ var c=cur(); if(c&&c.v===v) render(); }).catch(function(){});
   }catch(e){}
 }
