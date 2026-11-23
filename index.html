@@ -837,12 +837,13 @@ VIEWS.home=function(){
     var h='<div class="row"><h1 class="grow" style="margin:6px 0">Mis tareas</h1><button class="btn ghost sm" data-act="refrescar">Actualizar</button></div>';
     if(HOME.err) h+='<div class="hint warn">'+esc(HOME.err)+'. Se reintenta solo.</div>';
     var act=HOME.tareas.filter(function(t){ return (t.datos.estado||"pendiente")!=="completada"; }), fin=HOME.tareas.filter(function(t){ return (t.datos.estado)==="completada"; });
-    HOME.sem.forEach(function(x){ h+=semCardHtml(x,""); });
+    HOME.sem.filter(function(x){ return estadoSem(x)!=="completada"; }).forEach(function(x){ h+=semCardHtml(x,""); });
     act.forEach(function(t){ h+=tareaHtml(t,'data-act="abrirtarea" data-id="'+esc(t.id)+'"'); });
     var veh=HOME.libres.filter(function(x){ return x.datos.modulo==="despacho"; }), sinA=HOME.libres.filter(function(x){ return x.datos.modulo==="alistamiento"; });
     if(veh.length) h+='<h2>Vehículos disponibles para cargue</h2><p class="small muted">Si un vehículo lleva dos planillas (por ejemplo PLF y PLI), marca <b>Unir</b> en ambas y cárgalas juntas. Quien lo haga primero cierra la opción.</p>'+veh.map(function(x){ var dd=x.datos; return '<div class="card gold"><b>'+esc(dd.titulo)+'</b><div class="small muted">'+nf(dd.total)+' referencias · escoge este vehículo si lo vas a cargar</div><div class="sp"></div><div class="row"><button class="btn gold grow" data-act="tomarveh" data-id="'+esc(x.id)+'">Cargar este vehículo</button>'+(veh.length>1?'<button class="btn ghost" data-act="unitog" data-id="'+esc(x.id)+'">'+(UNI.sel[x.id]?'☑ Unir':'☐ Unir')+'</button>':'')+'</div></div>'; }).join("")+unirBarraHtml();
-    if(sinA.length) h+='<h2>Referencias sin asignar</h2>'+sinA.map(function(x){ var dd=x.datos, hh=(dd.ok||0)+(dd.parc||0)+(dd.no||0); return '<div class="card"><b>'+esc(dd.titulo)+'</b><div class="small muted">'+nf(dd.total)+' referencias sin dueño · '+hh+' separadas. Puedes separar las que quieras buscándolas por código o por palabras.</div>'+barra(dd.total?hh/dd.total:0,true)+'<div class="sp"></div><button class="btn block" data-act="abrirlibre" data-id="'+esc(x.id)+'">Abrir y separar</button></div>'; }).join("");    if(!act.length&&!HOME.sem.length&&!HOME.libres.length) h+='<div class="empty">'+(HOME.cargando?"Buscando tus tareas…":"No tienes tareas pendientes.<br>Cuando tu coordinador te asigne una, aparecerá aquí.")+'</div>';
-    if(fin.length){ h+='<h2>Completadas</h2>'; fin.slice(0,8).forEach(function(t){ h+=tareaHtml(t,'data-act="abrirtarea" data-id="'+esc(t.id)+'"'); }); }
+    if(sinA.length) h+='<h2>Referencias sin asignar</h2>'+sinA.map(function(x){ var dd=x.datos, hh=(dd.ok||0)+(dd.parc||0)+(dd.no||0); return '<div class="card"><b>'+esc(dd.titulo)+'</b><div class="small muted">'+nf(dd.total)+' referencias sin dueño · '+hh+' separadas. Puedes separar las que quieras buscándolas por código o por palabras.</div>'+barra(dd.total?hh/dd.total:0,true)+'<div class="sp"></div><button class="btn block" data-act="abrirlibre" data-id="'+esc(x.id)+'">Abrir y separar</button></div>'; }).join("");    if(!act.length&&!HOME.sem.some(function(x){ return estadoSem(x)!=="completada"; })&&!HOME.libres.length) h+='<div class="empty">'+(HOME.cargando?"Buscando tus tareas…":"No tienes tareas pendientes.<br>Cuando tu coordinador te asigne una, aparecerá aquí.")+'</div>';
+    var semFin=HOME.sem.filter(function(x){ return estadoSem(x)==="completada"; });
+    if(fin.length||semFin.length){ h+='<h2>Completadas</h2>'; semFin.forEach(function(x){ h+=semCardHtml(x,""); }); fin.slice(0,8).forEach(function(t){ h+=tareaHtml(t,'data-act="abrirtarea" data-id="'+esc(t.id)+'"'); }); }
     h+='<h2>Mi dispositivo</h2><div class="card"><label class="lb" style="margin-top:0">Cómo escanea</label><div class="row"><span class="chip btn2 '+(S.modoScan==="camara"?"sel":"")+'" data-act="scan" data-m="camara">Cámara</span><span class="chip btn2 '+(S.modoScan==="lector"?"sel":"")+'" data-act="scan" data-m="lector">Pistola / lector</span></div>'+
       '<p class="small muted" style="margin-top:10px">Escaneo obligatorio: <b>'+(S.exigir?"sí":"no")+'</b>. Lo define tu coordinador: '+(S.exigir?"el producto solo se confirma si el código leído coincide.":"puedes confirmar el producto sin escanearlo.")+'</p></div>';
     app(h); return;
@@ -940,7 +941,7 @@ function armarW(id,d,ro){
     (d.facturas||[]).forEach(function(f){ (f.l||[]).forEach(function(a){ var k=f.n+"|"+a[0], x=em[k];
       items.push({key:k,doc:f.n,cli:f.c||"",ref:a[0],desc:a[1],bar:a[2],ue:a[3],total:a[4],grupo:"",linea:"",tipos:"",seq:0,zona:"",sep:sepDe(a[0]),est:x?x[1]:"",hecho:x?x[2]:0,sc:x?x[3]:0,uid:x?x[4]:""}); }); });
   } else {
-    items=(d.items||[]).map(function(a){ var x=em[a[0]]; return {key:a[0],ref:a[0],desc:a[1],bar:a[2],ue:a[3],total:a[4],grupo:a[5],linea:a[6],tipos:a[7]||"",seq:a[8]||0,zona:a[9]||"",cemp:a[10]||"",sep:desp?sepDe(a[0]):"",est:x?x[1]:"",hecho:x?x[2]:0,sc:x?x[3]:0,uid:x?x[4]:""}; });
+    items=(d.items||[]).map(function(a){ var x=em[a[0]]; return {key:a[0],ref:a[0],desc:a[1],bar:a[2],ue:a[3],total:a[4],grupo:a[5],linea:a[6],tipos:a[7]||"",seq:((WM[a[0]]&&WM[a[0]].secuencia>0)?WM[a[0]].secuencia:(a[8]||0)),zona:((WM[a[0]]&&WM[a[0]].zona)||a[9]||""),cemp:a[10]||"",sep:desp?sepDe(a[0]):"",est:x?x[1]:"",hecho:x?x[2]:0,sc:x?x[3]:0,uid:x?x[4]:""}; });
   }
   return {id:id,d:d,items:items,ro:!!ro,modo:modo,fac:"",cambios:{},shared:false};
 }
@@ -949,7 +950,7 @@ async function abrirTarea(id,ro){
     var r=await DB.get("ops_tareas",id); if(!r){ toast("La tarea ya no existe"); return; }
     var d=r.datos, libre=d.asignadoId===""&&d.modulo==="alistamiento";
     if(!ro&&d.asignadoId!==S.me.id&&!libre){ toast("Esta tarea está asignada a otra persona"); return; }
-    WM={}; if(d.modulo==="despacho"){ try{ WM=await cargarMatriz(d.co); }catch(e){} }
+    WM={}; try{ WM=await cargarMatriz(d.co); }catch(e){} /* la secuencia y la zona de la matriz vigente se aplican al abrir, aunque la matriz se haya cargado despues de crear la sesion */
     W=armarW(id,d,ro); W.shared=libre&&!ro; TR={q:"",f:ro?"todas":"pend",g:""}; go("trab");
   }catch(e){ toast(e.message||"Sin conexión"); }
 }
@@ -2092,6 +2093,7 @@ VIEWS.desp=function(){
   h+='<div class="card gold"><b>2. Líneas de los documentos</b><p class="small muted">Se <b>toman solas de las sesiones de alistamiento</b> ya creadas en tu ciudad: no hace falta volver a cargar los archivos. Carga un Excel (factura o remisión) solo si falta algún documento, por ejemplo uno que no pasó por el alistamiento.</p><button class="btn ghost sm" data-act="traerdocs">Traer de las sesiones de alistamiento</button><div class="sp"></div><div class="row"><span class="chip ok">'+nf(Object.keys(D.lineas).length)+' documentos con líneas</span></div>'+D.archivos.map(function(a){ return '<div class="small muted" style="margin-top:6px">• '+esc(a.n)+' — '+a.f+' facturas</div>'; }).join("")+'<div class="sp"></div><button class="btn ghost block" data-act="cargafac">Cargar un Excel (solo si falta alguno)</button></div>';
   var libres=Object.keys(DP.tareas).map(function(k){ return DP.tareas[k]; }).filter(function(t){ return t.datos.modulo==="despacho"&&!t.datos.asignadoId; });
   if(libres.length) h+='<h2>Cargues disponibles (sin tomar)</h2><p class="small muted">Si un vehículo lleva dos planillas (PLF y PLI), marca <b>Unir</b> en ambas. Quien lo haga primero, tú o el auxiliar, cierra la opción.</p>'+libres.map(function(t){ return '<div class="card"><div class="row"><b class="grow">'+esc(t.datos.titulo)+'</b>'+(libres.length>1?'<button class="btn ghost" data-act="unitog" data-id="'+esc(t.id)+'">'+(UNI.sel[t.id]?'☑ Unir':'☐ Unir')+'</button>':'')+'<button class="btn ghost" style="color:#c0392b;border-color:#c0392b" data-act="eliminarcargue" data-id="'+esc(t.id)+'">Eliminar</button></div></div>'; }).join("")+unirBarraHtml();
+  h+=carguesPublicadosHtml();
   if(!mi) h+='<div class="hint warn">Sin maestro: el peso y volumen no se calcularán. Cárguelo en Administración → Maestro de productos.</div>';
   if(D.planillas.some(function(p){ return !p.co||p.co===coActual(); })){
     var cal=planillasCalc(), fechas=uniq(cal.map(function(c){ return c.pl.fecha; })).sort();
@@ -2168,7 +2170,7 @@ ACT.enviarcargue=async function(){
     var doc=tareaDoc("despacho",sid,(pl.revision?"Verificación de lo separado y no despachado · ":"Cargue "+pl.placa+" · ")+(pl.revision?pl.num:etiquetaPl(pl)),co,aux,items,{placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
     await DB.set("ops_tareas",doc.id,doc.datos); toast(aux?"Asignado a "+nombreDe(aux):"Vehículo publicado: los auxiliares de "+(ciudadPorCo(co)||{nombre:co}).nombre+" lo ven disponible"); await cargarDesp();
   }catch(e){ toast("No se pudo enviar: "+(e.message||e)); }
-};ACT.borrardesp=function(){ if(confirm("¿Borrar las planillas y facturas cargadas en este dispositivo? Las capacidades y tareas ya enviadas no se tocan.")){ S.desp={planillas:[],lineas:{},clientes:{},archivos:[],src:{}}; LS.set("ops_desp",S.desp); render(); } };
+};ACT.borrardesp=function(){ if(confirm("¿Borrar las planillas y facturas cargadas en este dispositivo? Los cargues ya publicados a los auxiliares NO se borran aquí: se eliminan en la sección «Cargues publicados» de esta misma pantalla.")){ S.desp={planillas:[],lineas:{},clientes:{},archivos:[],src:{}}; LS.set("ops_desp",S.desp); render(); } };
 ACT.cargapla=function(){
   elegirExcels(function(lista){
     var co=coActual(), anul=0, ajenas=0, errs=[], mp={}, orden=[];
@@ -2485,6 +2487,22 @@ function confirmarSep(cals){
   if(!n) return true;
   return confirm(n+" de los vehículos a publicar tiene"+(n>1?"n":"")+" mercancía que no se separó completa ("+p+" referencias entre parcial, «no hay» o sin separar) o sesiones sin terminar. ¿Publicar de todos modos?");
 }
+
+/* ===== Cargues ya publicados (asignados, en curso o terminados): el coordinador los ve y los puede eliminar aunque ya no tenga planillas cargadas ===== */
+function carguesPublicadosHtml(){
+  var ts=Object.keys(DP.tareas).map(function(k){ return DP.tareas[k]; }).filter(function(t){ return t.datos.modulo==="despacho"&&t.datos.asignadoId; });
+  if(!ts.length) return "";
+  return '<h2>Cargues publicados ('+ts.length+')</h2><p class="small muted">Vehículos que ya están asignados o los están cargando los auxiliares. Si ya no aplican (por ejemplo, de días anteriores), elimínalos para que desaparezcan de su lista.</p>'+
+    ts.map(function(t){ var d=t.datos; return '<div class="card"><div class="row"><b class="grow">'+esc(d.titulo)+'</b><button class="btn ghost sm" style="color:#c0392b;border-color:#c0392b" data-act="eliminarcargue" data-id="'+esc(t.id)+'">Eliminar</button></div><div class="row small muted"><span>'+esc(d.fecha||"")+'</span><span>'+esc(d.asignadoNombre||"")+'</span>'+estadoChip(d.estado||"pendiente")+'<span class="chip">'+((d.ok||0)+(d.parc||0)+(d.no||0))+'/'+(d.total||0)+'</span></div></div>'; }).join("")+
+    '<button class="btn red sm" data-act="eliminartodoscargues">Eliminar los '+ts.length+' cargues publicados</button>';
+}
+ACT.eliminartodoscargues=async function(){
+  var ts=Object.keys(DP.tareas).map(function(k){ return DP.tareas[k]; }).filter(function(t){ return t.datos.modulo==="despacho"&&t.datos.asignadoId; });
+  if(!ts.length) return;
+  if(!confirm("¿Eliminar los "+ts.length+" cargues publicados de tu ciudad? Desaparecen para los auxiliares y se pierde su avance. No se puede deshacer.")) return;
+  try{ for(var i=0;i<ts.length;i++) await DB.del("ops_tareas",ts[i].id); toast(ts.length+" cargues eliminados"); await cargarDesp(); render(); }
+  catch(e){ toast("No se pudo eliminar: "+(e.message||e)); }
+};
 
 /* ===== 65_listado.js ===== */
 /* ---------- rutas por poblacion y listado de separacion impreso (para bodegas sin RF ni matriz formal) ---------- */
