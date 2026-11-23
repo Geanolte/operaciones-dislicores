@@ -2516,13 +2516,14 @@ function candidatosReenvio(){
     pl.facs.forEach(function(f){ if(re[f]||out[f]) return;
       var mot="", sf=sesFechaDe(f); if(sf&&pl.fecha&&sf<pl.fecha) mot="se separó el "+sf;
       if(!mot){ var h=(CON.hist||[]).filter(function(x){ return x.sid!=="D"+pl.num&&(x.docs||[]).indexOf(f)>=0; })[0]; if(h) mot="ya salió en otro cargue ("+h.sid.replace(/^D/,"")+")"; }
+      if(!mot&&CON.docs&&!CON.docs[f]) mot="no tiene alistamiento registrado";
       if(mot){ out[f]=mot; orden.push(f); } }); });
   return orden.map(function(f){ return {doc:f,motivo:out[f]}; });
 }
 function confirmarReenvios(despues){
   var c=candidatosReenvio(); if(!c.length){ if(despues) despues(); return; }
   var lista=c.slice(0,12).map(function(x){ var cl=(S.desp.clientes||{})[x.doc]||""; return '<div class="small"><span class="mono">'+esc(x.doc)+'</span>'+(cl?' <small class="muted">'+esc(cl)+'</small>':'')+' · <span class="muted">'+esc(x.motivo)+'</span></div>'; }).join("")+(c.length>12?'<div class="small muted">… y '+(c.length-12)+' más</div>':'');
-  var bg=abrirSheet('<h3>¿Son documentos para volver a enviar?</h3><p><b>'+c.length+' documento'+(c.length>1?'s':'')+'</b> de la planilla '+(c.length>1?'son':'es')+' de un alistamiento de días anteriores o ya salió en otro cargue:</p>'+lista+'<p style="margin-top:10px"><b>Si son para volver a enviar</b> (no se entregaron la primera vez), se siguen despachando sin exigir el alistamiento de hoy. Quedan marcados «VOLVER A ENVIAR».</p><button class="btn gold block" id="reSi">Sí, son para volver a enviar</button><div class="sp"></div><button class="btn ghost block" id="reNo">No, déjalos como están</button>');
+  var bg=abrirSheet('<h3>¿Son documentos para volver a enviar?</h3><p><b>'+c.length+' documento'+(c.length>1?'s':'')+'</b> de la planilla '+(c.length>1?'son':'es')+' de un alistamiento de días anteriores o ya salió en otro cargue:</p>'+lista+'<p style="margin-top:10px"><b>Si son para volver a enviar</b> (no se entregaron la primera vez; tú respondes por ello), se siguen despachando sin exigir el alistamiento de hoy. Quedan marcados «VOLVER A ENVIAR».</p><button class="btn gold block" id="reSi">Sí, son para volver a enviar</button><div class="sp"></div><button class="btn ghost block" id="reNo">No, déjalos como están</button>');
   $("#reSi",bg).onclick=function(){ var re=reenvDe(); c.forEach(function(x){ re[x.doc]=1; }); LS.set("ops_desp",S.desp); cerrarSheet(); toast(c.length+" documentos marcados para volver a enviar",4000); render(); if(despues) despues(); };
   $("#reNo",bg).onclick=function(){ cerrarSheet(); render(); if(despues) despues(); };
 }
