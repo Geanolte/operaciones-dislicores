@@ -1753,7 +1753,7 @@ async function cargarVeh(){
     S.vehList=rows.map(function(r){ return {id:r.id,d:r.datos||{}}; }); S.veh={}; S.cap={};
     S.vehList.forEach(function(v){ S.veh[v.d.placa]=v.d; S.cap[v.d.placa]={kg:v.d.kg||0,m3:v.d.m3||0}; });
   }catch(e){ VH.err=e.message||"Sin conexión"; }
-  VH.cargando=false; var c=cur(); if(c&&(c.v==="vehiculos"||c.v==="home")) render();
+  VH.cargando=false; var c=cur(); if(c&&(c.v==="vehiculos"||c.v==="home"||c.v==="desp"||c.v==="placa")&&!$(".sheet-bg")) render();
 }
 /* Estado de un documento por su fecha de vencimiento */
 function estadoDoc(f){
@@ -1830,7 +1830,7 @@ function hojaVehiculo(placa){
     try{
       var doc=Object.assign({},S.veh[pl]||{},nd,{incompleto:false,actualizadoEn:ahora(),actualizadoPor:S.me.id}); delete doc.cedula;
       await DB.set("vehiculos",co+"-"+pl,doc);
-      S.veh[pl]=doc; S.cap[pl]={kg:nd.kg,m3:nd.m3}; cerrarSheet(); toast("Vehículo "+pl+" guardado"); cargarVeh();
+      S.veh[pl]=doc; S.cap[pl]={kg:nd.kg,m3:nd.m3}; cerrarSheet(); toast("Vehículo "+pl+" guardado"); render(); cargarVeh();
     }catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
   };
 }
