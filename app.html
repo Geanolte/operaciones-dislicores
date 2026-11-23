@@ -1043,10 +1043,10 @@ VIEWS.trab=function(){
 function listaHtml(){
   var q=normH(TR.q), h="", desp=esDespW(), gf=desp?"sep":"grupo";
   var idx=W.items.map(function(it,i){ return i; });
-  if((desp&&W.modo!=="factura")||(!desp&&TR.o!=="seq")){
+  if(desp||TR.o!=="seq"){
     /* orden de cargue: primero lo que va en cajas (mas cajas, mas peso, mas volumen), al final las unidades sueltas */
     var kv=function(it){ var ue=it.ue>1?it.ue:1, c=ue>1?Math.floor(it.total/ue):0, s=it.total-c*ue, m=S.mae[it.ref]||{}; return {c:c,s:s,kg:it.total*(m.p||0),vol:c*(m.ve||0)+s*(m.vi||0)}; };
-    idx.sort(function(a,b){ var x=kv(W.items[a]), y=kv(W.items[b]); if((x.c>0)!==(y.c>0)) return x.c>0?-1:1; if(x.c!==y.c) return y.c-x.c; if(x.kg!==y.kg) return y.kg-x.kg; if(x.vol!==y.vol) return y.vol-x.vol; return y.s-x.s; });
+    idx.sort(function(a,b){ var x=kv(W.items[a]), y=kv(W.items[b]); if((x.c>0)!==(y.c>0)) return x.c>0?-1:1; if(x.c!==y.c) return y.c-x.c; if(x.kg!==y.kg) return y.kg-x.kg; if(x.vol!==y.vol) return y.vol-x.vol; return (y.s-x.s)||(String(W.items[a].doc||"")<String(W.items[b].doc||"")?-1:1); });
   } else if(desp){ idx.sort(function(a,b){ return ordenRef(W.items[a].ref,W.items[b].ref); }); }
   else idx.sort(function(a,b){ var x=W.items[a],y=W.items[b]; return ((x.seq||1e9)-(y.seq||1e9)) || (x.grupo<y.grupo?-1:x.grupo>y.grupo?1:x.linea<y.linea?-1:x.linea>y.linea?1:ordenRef(x.ref,y.ref)); });
   idx.forEach(function(i){
