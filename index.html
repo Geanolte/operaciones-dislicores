@@ -1883,10 +1883,12 @@ ACT.alnueva=function(){ NUEVA={}; go("nueva"); };
 ACT.abrirses=function(el,d){ SESV={id:d("id"),cargando:true,err:"",ses:null,tareas:[]}; go("ses"); cargarSes(); };
 
 /* ---- nueva sesion: al cargar los archivos la sesion se crea sola (una por centro de operacion); los cambios se hacen despues sobre la sesion ---- */
-var NUEVA={}, EXCL=0;
+var NUEVA={}, EXCL=0, PART={ex:{}}; /* PART.ex: auxiliares que hoy NO alistan (no reciben el reparto de lo que la matriz no asigna) */
+ACT.partog=function(el,d){ var id=d("id"); if(PART.ex[id]) delete PART.ex[id]; else PART.ex[id]=1; render(); };
 VIEWS.nueva=function(){
   topbar("Nueva sesión",subtituloUsuario(),true);
-  var h='<h1>Nueva sesión</h1><div class="card gold"><b>Archivos de facturas, pedidos, requisiciones o remisiones</b><p class="small muted">Cargue todos los archivos del día, sin filtrar. La app reconoce el tipo de cada uno, descarta los datos de clientes, desglosa las ofertas según la base y <b>crea la sesión de inmediato</b>, repartida según la matriz. Si el archivo trae varias ciudades, crea una sesión por cada una. Después puede ajustar lo que haga falta dentro de la sesión e imprimir el listado de separación.</p><button class="btn block" data-act="nvarchivos" '+(NUEVA.creando?'disabled':'')+'>'+(NUEVA.creando?'Creando…':'Elegir Excel (uno o varios)')+'</button></div>';
+  var cop=esAdmin()?S.coSel:S.me.co, auxl=usuariosDe(cop,"operario");
+  var h='<h1>Nueva sesión</h1><div class="card"><b>¿Quiénes alistan hoy?</b><p class="small muted">Lo que la matriz no asigna a nadie se reparte en partes iguales entre los marcados. Desmarca a quien hoy no alista.</p><div class="tabs">'+(auxl.length?auxl.map(function(u){ return '<span class="chip btn2 '+(PART.ex[u.id]?"":"sel")+'" data-act="partog" data-id="'+esc(u.id)+'">'+(PART.ex[u.id]?'☐ ':'☑ ')+esc(u.nombre)+'</span>'; }).join(""):'<span class="small muted">No hay auxiliares activos en esta ciudad.</span>')+'</div></div><div class="card gold"><b>Archivos de facturas, pedidos, requisiciones o remisiones</b><p class="small muted">Cargue todos los archivos del día, sin filtrar. La app reconoce el tipo de cada uno, descarta los datos de clientes, desglosa las ofertas según la base y <b>crea la sesión de inmediato</b>, repartida según la matriz. Si el archivo trae varias ciudades, crea una sesión por cada una. Después puede ajustar lo que haga falta dentro de la sesión e imprimir el listado de separación.</p><button class="btn block" data-act="nvarchivos" '+(NUEVA.creando?'disabled':'')+'>'+(NUEVA.creando?'Creando…':'Elegir Excel (uno o varios)')+'</button></div>';
   if(NUEVA.creando) h+='<div class="empty">'+esc(NUEVA.msg||"Creando la sesión…")+'</div>';
   if(NUEVA.errores&&NUEVA.errores.length) h+='<div class="hint warn" style="margin-top:8px"><b>No se pudieron usar:</b><br>'+NUEVA.errores.map(function(e){ return '• '+esc(e); }).join("<br>")+'</div>';
   app(h);
@@ -1944,7 +1946,7 @@ function armarSesion(raw,co,iguales){
 async function crearSesionDe(N,detalle){
   var M=await cargarMatriz(N.co), rep=repartirPorMatriz(N.items,M,N.co), co=N.co, ciudad=(ciudadPorCo(co)||{nombre:co}).nombre;
   /* Lo que la matriz no asigna se reparte equitativamente entre los auxiliares activos del C.O. (el que va con menos referencias recibe primero) */
-  var auxs=usuariosDe(co,"operario");
+  var auxs=usuariosDe(co,"operario").filter(function(u){ return !PART.ex[u.id]; });
   if(rep.sin.length&&auxs.length){
     var carga0={}; auxs.forEach(function(u){ var l=rep.por[u.id]||[]; carga0[u.id]={n:l.length,u:l.reduce(function(s,x){ return s+(x.total||0); },0)}; });
     rep.sin.slice().sort(function(a,b){ return (b.total||0)-(a.total||0); }).forEach(function(it){
