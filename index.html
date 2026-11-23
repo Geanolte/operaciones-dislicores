@@ -1943,6 +1943,16 @@ function armarSesion(raw,co,iguales){
 }
 async function crearSesionDe(N,detalle){
   var M=await cargarMatriz(N.co), rep=repartirPorMatriz(N.items,M,N.co), co=N.co, ciudad=(ciudadPorCo(co)||{nombre:co}).nombre;
+  /* Lo que la matriz no asigna se reparte equitativamente entre los auxiliares activos del C.O. (el que va con menos referencias recibe primero) */
+  var auxs=usuariosDe(co,"operario");
+  if(rep.sin.length&&auxs.length){
+    var carga0={}; auxs.forEach(function(u){ var l=rep.por[u.id]||[]; carga0[u.id]={n:l.length,u:l.reduce(function(s,x){ return s+(x.total||0); },0)}; });
+    rep.sin.slice().sort(function(a,b){ return (b.total||0)-(a.total||0); }).forEach(function(it){
+      var mejor=auxs[0].id; auxs.forEach(function(u){ var a=carga0[u.id], b=carga0[mejor]; if(a.n<b.n||(a.n===b.n&&a.u<b.u)) mejor=u.id; });
+      (rep.por[mejor]=rep.por[mejor]||[]).push(it); carga0[mejor].n++; carga0[mejor].u+=(it.total||0);
+    });
+    rep.sin=[]; Object.keys(rep.por).forEach(function(k){ rep.por[k].sort(function(a,b){ return (a.seq||1e9)-(b.seq||1e9)||ordenRef(a.ref,b.ref); }); });
+  }
   var titulo="Alistamiento "+ciudad+" "+hoy(), sid="S"+hoy().slice(2).replace(/-/g,"")+"-"+rid(3);
   var reg={maestro:0,completados:0,matriz:0}; try{ reg=await registrarPendientes(N.items,co); }catch(e){}
   N.items.forEach(function(it){ it.cemp=avisoEmpaque(it.ref); });
