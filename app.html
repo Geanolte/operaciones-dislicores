@@ -950,7 +950,7 @@ async function abrirTarea(id,ro){
     var r=await DB.get("ops_tareas",id); if(!r){ toast("La tarea ya no existe"); return; }
     var d=r.datos, libre=d.asignadoId===""&&d.modulo==="alistamiento";
     if(!ro&&d.asignadoId!==S.me.id&&!libre){ toast("Esta tarea está asignada a otra persona"); return; }
-    WM={}; try{ WM=await cargarMatriz(d.co); }catch(e){} /* la secuencia y la zona de la matriz vigente se aplican al abrir, aunque la matriz se haya cargado despues de crear la sesion */
+    WM={}; try{ WM=await cargarMatriz(d.co,true); }catch(e){} /* la secuencia y la zona de la matriz vigente se aplican al abrir, aunque la matriz se haya cargado despues de crear la sesion */
     W=armarW(id,d,ro); W.shared=libre&&!ro; TR={q:"",f:ro?"todas":"pend",g:""}; go("trab");
   }catch(e){ toast(e.message||"Sin conexión"); }
 }
@@ -2631,7 +2631,7 @@ ACT.seslistado=async function(){
   try{
     toast("Preparando el listado…",2500);
     var rows=await DB.list("ops_tareas",{filter:{"datos->>sid":"eq."+SESV.id},all:true}), M={};
-    try{ M=await cargarMatriz(SESV.ses.co); }catch(e){}
+    try{ M=await cargarMatriz(SESV.ses.co,true); }catch(e){}
     LSD={ses:SESV.ses,tareas:rows.map(function(r){ return {id:r.id,datos:r.datos}; }),M:M}; LST={ruta:"",piso:""}; go("listado");
   }catch(e){ toast("No se pudo preparar el listado: "+(e.message||e)); }
 };
