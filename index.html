@@ -2165,9 +2165,9 @@ ACT.enviarcargue=async function(){
   var cal=planillasCalc()[PL.i], pl=cal.pl, sid="D"+pl.num, co=coActual(); if(sinAlistarDe(pl).length){ toast("No se puede publicar: la planilla trae documentos que no se separaron. Corrígela primero.",5000); render(); return; } if(!confirmarSep([cal])) return; if(tareaDePlanilla(pl)||(await DB.get("ops_tareas",sid+"--SIN"))){ toast("Esta planilla ya está en un cargue publicado"); await cargarDesp(); return; }
   var items=cal.items.map(function(i){ return Object.assign({},i,{tipos:"FAC",seq:0,zona:"",cemp:avisoEmpaque(i.ref)}); });
   /* facturas del vehiculo con su cliente (solo el nombre) y sus lineas, para cargar factura por factura */
-  var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:cl[f]||"",l:S.desp.lineas[f]}; });
+  var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:(reenvDe()[f]?"[VOLVER A ENVIAR] ":"")+(cl[f]||""),l:S.desp.lineas[f]}; });
   try{
-    var doc=tareaDoc("despacho",sid,(pl.revision?"Verificación de lo separado y no despachado · ":"Cargue "+pl.placa+" · ")+(pl.revision?pl.num:etiquetaPl(pl)),co,aux,items,{placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
+    var doc=tareaDoc("despacho",sid,(pl.revision?"Verificación de lo separado y no despachado · ":"Cargue "+pl.placa+" · ")+(pl.revision?pl.num:etiquetaPl(pl)),co,aux,items,{docsN:pl.facs,placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
     await DB.set("ops_tareas",doc.id,doc.datos); toast(aux?"Asignado a "+nombreDe(aux):"Vehículo publicado: los auxiliares de "+(ciudadPorCo(co)||{nombre:co}).nombre+" lo ven disponible"); await cargarDesp();
   }catch(e){ toast("No se pudo enviar: "+(e.message||e)); }
 };ACT.borrardesp=function(){ if(confirm("¿Borrar las planillas y facturas cargadas en este dispositivo? Los cargues ya publicados a los auxiliares NO se borran aquí: se eliminan en la sección «Cargues publicados» de esta misma pantalla.")){ S.desp={planillas:[],lineas:{},clientes:{},archivos:[],src:{}}; LS.set("ops_desp",S.desp); render(); } };
@@ -2195,7 +2195,7 @@ ACT.cargapla=function(){
     });
     if(!orden.length){ toast(errs[0]||"No hay planillas de tu centro de operación en el archivo",4500); return; }
     S.desp.cargadoEn=Date.now(); S.desp.planillas=orden.map(function(k){ return mp[k]; }).sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:String(x.num).localeCompare(String(y.num),undefined,{numeric:true}); });
-    registrarVehiculos(S.desp.planillas).catch(function(){}); traerDocs().then(function(){ return cargarTareasAli().catch(function(){}); }).then(function(){ render(); confirmarFaltantes(); }).catch(function(){}); LS.set("ops_desp",S.desp);
+    registrarVehiculos(S.desp.planillas).catch(function(){}); traerDocs().then(function(){ return cargarTareasAli().catch(function(){}); }).then(function(){ render(); confirmarReenvios(confirmarFaltantes); }).catch(function(){}); LS.set("ops_desp",S.desp);
     toast(S.desp.planillas.filter(function(p){ return p.co===co; }).length+" planillas de "+((ciudadPorCo(co)||{nombre:co}).nombre)+" ("+S.desp.planillas.filter(function(p){ return p.co===co&&p.tipo==="PLI"; }).length+" PLI)"+(ajenas?" · "+nf(ajenas)+" filas de otros C.O. omitidas":"")+(anul?" · "+anul+" anuladas omitidas":"")+(errs.length?" · "+errs.join("; "):""),5000); render();
   });
 };ACT.cargafac=function(){
@@ -2280,7 +2280,7 @@ ACT.eliminarcargue=async function(el,d){
 var CON={docs:null}, SELP={}, REPD={q:"",placa:"",fecha:"",modo:"det"};
 
 /* Documentos de la planilla que NO se separaron en el alistamiento: error operativo, el vehiculo no se puede publicar */
-function sinAlistarDe(pl){ if(!pl||pl.revision||!CON.docs) return []; return pl.facs.filter(function(f){ return !CON.docs[f]; }); }
+function sinAlistarDe(pl){ if(!pl||pl.revision||!CON.docs) return []; return pl.facs.filter(function(f){ return !CON.docs[f]&&!reenvDe()[f]; }); }
 function errorSinAlistarHtml(pl,corto){
   var s=sinAlistarDe(pl);
   return '<div class="hint" style="margin-top:6px;border-left:4px solid #c0392b;color:#c0392b"><b>Error operativo: '+s.length+' documento'+(s.length>1?'s':'')+' sin separar</b> ('+listaDocs(s,corto?4:15)+'). No se puede publicar este vehículo con mercancía que no está en el carro.'+(corto?'':'<br><span class="muted">Sepárala en un alistamiento si sí va, o quita esos documentos de la planilla en el ERP y vuelve a cargar la PLF/PLI.</span>')+'</div>';
@@ -2291,8 +2291,8 @@ async function publicarPl(cal,aux){
   if(sinAlistarDe(pl).length) return 0;
   if(!cal.items.length||tareaDePlanilla(pl)||(await DB.get("ops_tareas",sid+"--SIN"))) return 0;
   var items=cal.items.map(function(i){ return Object.assign({},i,{tipos:"FAC",seq:0,zona:"",cemp:avisoEmpaque(i.ref)}); });
-  var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:cl[f]||"",l:S.desp.lineas[f]}; });
-  var doc=tareaDoc("despacho",sid,(pl.revision?"Verificación de lo separado y no despachado · ":"Cargue "+pl.placa+" · ")+(pl.revision?pl.num:etiquetaPl(pl)),co,aux,items,{placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
+  var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:(reenvDe()[f]?"[VOLVER A ENVIAR] ":"")+(cl[f]||""),l:S.desp.lineas[f]}; });
+  var doc=tareaDoc("despacho",sid,(pl.revision?"Verificación de lo separado y no despachado · ":"Cargue "+pl.placa+" · ")+(pl.revision?pl.num:etiquetaPl(pl)),co,aux,items,{docsN:pl.facs,placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
   await DB.set("ops_tareas",doc.id,doc.datos); return 1;
 }
 function barraSeleccionHtml(cal){
@@ -2325,10 +2325,10 @@ function conciliar(){
   if(!pls.length) return null;
   var enPl={}, ord=[]; pls.forEach(function(p){ p.facs.forEach(function(f){ if(!enPl[f]){ enPl[f]=p; ord.push(f); } }); });
   var sinPlanilla=Object.keys(CON.docs).filter(function(k){ return !enPl[k]; });
-  var sinAlistar=ord.filter(function(f){ return !CON.docs[f]; });
+  var sinAlistar=ord.filter(function(f){ return !CON.docs[f]&&!reenvDe()[f]; });
   var dif=[];
   ord.forEach(function(f){
-    var sd=CON.docs[f], dl=S.desp.lineas[f]; if(!sd||!dl) return;
+    var sd=CON.docs[f], dl=S.desp.lineas[f]; if(!sd||!dl||reenvDe()[f]) return;
     var ls=(sd.l||[]).map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],cant:a[4],bod:"",grupo:"",linea:"",doc:f,t:sd.t||"FAC"}; }), dd=desglosar(ls,co);
     var a=sumaRefs(dd.lineas.map(function(l){ return [l.ref,l.desc,l.bar,l.ue,l.cant]; })), b=sumaRefs(dl), ks=Object.keys(a).concat(Object.keys(b).filter(function(k){ return a[k]===undefined; }));
     ks.forEach(function(k){ if((a[k]||0)!==(b[k]||0)) dif.push({doc:f,ref:k,sep:a[k]||0,desp:b[k]||0}); });
@@ -2358,7 +2358,7 @@ function cierreHtml(){
   return '<div class="card" style="border-left:5px solid var(--gold)"><b>Despacho realizado</b><p class="small">Todos los vehículos ya se cargaron. Quedaron <b>'+nf(pend.length)+' documentos separados que no se despacharon</b> ('+nf(u)+' unidades). ¿Quieres generar la revisión?</p><p class="small muted">Es una orden de <b>verificación</b>, no de despacho: sirve para comprobar en el muelle toda la mercancía que se separó y no salió.</p><button class="btn gold" data-act="crearrev">Sí, generar la revisión</button></div>';
 }
 function conciliacionHtml(){
-  var cierre=cierreHtml(); return cierre+conciliacionBase();
+  var cierre=cierreHtml(); return cierre+reenvioHtml()+conciliacionBase();
 }
 function conciliacionBase(){
   var c=conciliar(); if(!c) return "";
@@ -2398,7 +2398,7 @@ VIEWS.conductor=function(){
   if(!cal0){ app('<div class="empty">Abre un vehículo y elige «Imprimir listado para el conductor».</div>'); return; }
   var grp=grupoVehiculo(cal0), pl=cal0.pl, vv=S.veh[pl.placa]||{}, ciudad=(ciudadPorCo(coActual())||{nombre:""}).nombre;
   var cl=S.desp.clientes||{}, docs=[], tot={c:0,s:0,u:0}, mp={};
-  grp.forEach(function(g){ g.pl.facs.forEach(function(f){ var ls=S.desp.lineas[f]; if(!ls) { docs.push({f:f,t:g.pl.tipo||"PLF",pl:g.pl.num,c:cl[f]||"",ls:[],falta:true}); return; } docs.push({f:f,t:g.pl.tipo||"PLF",pl:g.pl.num,c:cl[f]||"",ls:ls}); }); });
+  grp.forEach(function(g){ g.pl.facs.forEach(function(f){ var ls=S.desp.lineas[f]; if(!ls) { docs.push({f:f,t:g.pl.tipo||"PLF",pl:g.pl.num,c:(reenvDe()[f]?"[VOLVER A ENVIAR] ":"")+(cl[f]||""),ls:[],falta:true}); return; } docs.push({f:f,t:g.pl.tipo||"PLF",pl:g.pl.num,c:(reenvDe()[f]?"[VOLVER A ENVIAR] ":"")+(cl[f]||""),ls:ls}); }); });
   docs.forEach(function(d){ d.u=0; d.ls.forEach(function(a){ var m=S.mae[a[0]]||{}, ue=a[3]>0?a[3]:(m.u||1); d.u+=a[4]; var k=a[0]; if(!mp[k]) mp[k]={ref:k,desc:a[1]||m.d||"",ue:ue,t:0}; mp[k].t+=a[4]; }); });
   var items=Object.keys(mp).sort(ordenRef).map(function(k){ return mp[k]; });
   items.forEach(function(it){ var x=cajasUni(it.t,it.ue); tot.c+=x.c; tot.s+=x.s; tot.u+=it.t; });
@@ -2458,10 +2458,11 @@ CON.tareas=null;
 async function cargarTareasAli(){
   var co=coActual(), rs=await DB.list("ops_tareas",{filter:{"datos->>co":"eq."+co,"datos->>modulo":"eq.alistamiento"},all:true});
   CON.tareas=rs.map(function(r){ return {id:r.id,d:r.datos||{}}; });
+  try{ var hs=await DB.list("ops_tareas",{filter:{"datos->>co":"eq."+co,"datos->>modulo":"eq.despacho"},select:"id,sid:datos->>sid,dn:datos->docsN",all:true}); CON.hist=hs.map(function(r){ return {sid:r.sid,docs:r.dn||[]}; }); }catch(e){ CON.hist=[]; }
 }
 function sepResumen(cal){
   var pl=cal.pl; if(!CON.docs||!CON.tareas||pl.revision) return null;
-  var sids={}; pl.facs.forEach(function(f){ var d=CON.docs[f]; if(d&&d.sid) sids[d.sid]=1; });
+  var sids={}; pl.facs.forEach(function(f){ var d=CON.docs[f]; if(d&&d.sid&&!reenvDe()[f]) sids[d.sid]=1; });
   var tot={}, hecho={}, estado={}, sinTerminar={};
   CON.tareas.forEach(function(t){ var d=t.d; if(!sids[d.sid]) return; if(d.estado!=="completada") sinTerminar[d.titulo||d.sid]=1;
     var em={}; (d.e||[]).forEach(function(x){ em[x[0]]=x; });
@@ -2503,6 +2504,35 @@ ACT.eliminartodoscargues=async function(){
   try{ for(var i=0;i<ts.length;i++) await DB.del("ops_tareas",ts[i].id); toast(ts.length+" cargues eliminados"); await cargarDesp(); render(); }
   catch(e){ toast("No se pudo eliminar: "+(e.message||e)); }
 };
+
+/* ===== Volver a enviar: documentos de alistamientos de dias anteriores o ya despachados antes ===== */
+CON.hist=[];
+function reenvDe(){ S.desp.reenv=S.desp.reenv||{}; return (S.desp.reenv[coActual()]=S.desp.reenv[coActual()]||{}); }
+function sesFechaDe(f){ var d=CON.docs&&CON.docs[f]; if(!d||!d.sid||!CON.tareas) return ""; for(var i=0;i<CON.tareas.length;i++){ if(CON.tareas[i].d.sid===d.sid) return CON.tareas[i].d.fecha||""; } return ""; }
+/* {doc, motivo} de los documentos planillados que parecen volver a enviar y aun no se han confirmado */
+function candidatosReenvio(){
+  var co=coActual(), re=reenvDe(), out={}, orden=[];
+  (S.desp.planillas||[]).forEach(function(pl){ if(pl.revision||(pl.co&&pl.co!==co)) return;
+    pl.facs.forEach(function(f){ if(re[f]||out[f]) return;
+      var mot="", sf=sesFechaDe(f); if(sf&&pl.fecha&&sf<pl.fecha) mot="se separó el "+sf;
+      if(!mot){ var h=(CON.hist||[]).filter(function(x){ return x.sid!=="D"+pl.num&&(x.docs||[]).indexOf(f)>=0; })[0]; if(h) mot="ya salió en otro cargue ("+h.sid.replace(/^D/,"")+")"; }
+      if(mot){ out[f]=mot; orden.push(f); } }); });
+  return orden.map(function(f){ return {doc:f,motivo:out[f]}; });
+}
+function confirmarReenvios(despues){
+  var c=candidatosReenvio(); if(!c.length){ if(despues) despues(); return; }
+  var lista=c.slice(0,12).map(function(x){ var cl=(S.desp.clientes||{})[x.doc]||""; return '<div class="small"><span class="mono">'+esc(x.doc)+'</span>'+(cl?' <small class="muted">'+esc(cl)+'</small>':'')+' · <span class="muted">'+esc(x.motivo)+'</span></div>'; }).join("")+(c.length>12?'<div class="small muted">… y '+(c.length-12)+' más</div>':'');
+  var bg=abrirSheet('<h3>¿Son documentos para volver a enviar?</h3><p><b>'+c.length+' documento'+(c.length>1?'s':'')+'</b> de la planilla '+(c.length>1?'son':'es')+' de un alistamiento de días anteriores o ya salió en otro cargue:</p>'+lista+'<p style="margin-top:10px"><b>Si son para volver a enviar</b> (no se entregaron la primera vez), se siguen despachando sin exigir el alistamiento de hoy. Quedan marcados «VOLVER A ENVIAR».</p><button class="btn gold block" id="reSi">Sí, son para volver a enviar</button><div class="sp"></div><button class="btn ghost block" id="reNo">No, déjalos como están</button>');
+  $("#reSi",bg).onclick=function(){ var re=reenvDe(); c.forEach(function(x){ re[x.doc]=1; }); LS.set("ops_desp",S.desp); cerrarSheet(); toast(c.length+" documentos marcados para volver a enviar",4000); render(); if(despues) despues(); };
+  $("#reNo",bg).onclick=function(){ cerrarSheet(); render(); if(despues) despues(); };
+}
+ACT.revreenv=function(){ confirmarReenvios(); };
+function reenvioHtml(){
+  var c=candidatosReenvio(), re=Object.keys(reenvDe()).filter(function(f){ return (S.desp.planillas||[]).some(function(p){ return p.facs.indexOf(f)>=0; }); }), h="";
+  if(c.length) h+='<div class="hint warn" style="margin-top:6px"><b>'+c.length+' documento'+(c.length>1?'s':'')+' parece'+(c.length>1?'n':'')+' volver a enviar</b> (de días anteriores o ya despachado'+(c.length>1?'s':'')+'). <button class="btn ghost sm" data-act="revreenv">Revisar</button></div>';
+  if(re.length) h+='<div class="hint" style="margin-top:6px"><b>'+re.length+' documento'+(re.length>1?'s':'')+' marcado'+(re.length>1?'s':'')+' «volver a enviar»</b>: se despachan sin exigir el alistamiento de hoy.</div>';
+  return h;
+}
 
 /* ===== 65_listado.js ===== */
 /* ---------- rutas por poblacion y listado de separacion impreso (para bodegas sin RF ni matriz formal) ---------- */
