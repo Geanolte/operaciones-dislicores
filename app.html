@@ -215,6 +215,23 @@ body.compacto .bar{height:6px}
 body.compacto .sheet{padding:12px 14px calc(14px + env(safe-area-inset-bottom))}
 }
 
+/* ---- Despacho: tablero de vehiculos ---- */
+.kfil{display:grid;grid-template-columns:repeat(auto-fit,minmax(86px,1fr));gap:6px;margin:6px 0}
+.kf{background:var(--card,#fff);border:1px solid #0002;border-radius:10px;padding:6px 4px;text-align:center;cursor:pointer;font:inherit;color:inherit}
+.kf b{display:block;font-size:20px;line-height:1.1}.kf span{font-size:11px;color:#777}
+.kf.sel{border-color:var(--gold-dark,#a8892f);box-shadow:0 0 0 2px var(--gold,#c4aa59) inset}.kf.hot b{color:#c0392b}
+.vh{background:var(--card,#fff);border:1px solid #0002;border-left:5px solid #bbb;border-radius:12px;padding:9px 11px;margin:8px 0}
+.vh.pub{border-left-color:var(--gold,#c4aa59)}.vh.libre{border-left-color:#e0a030}.vh.curso{border-left-color:#3b82c4}.vh.fin{border-left-color:#2e9d5b}
+.vh .vt{display:flex;align-items:center;gap:8px;cursor:pointer}.vh .vt .pl{font-size:17px}
+.vh .ck{background:none;border:0;font-size:22px;cursor:pointer;padding:0 2px;color:inherit}
+.vh .vs{font-size:12.5px;color:#666;margin:3px 0 5px;cursor:pointer}
+.vh .vc{display:flex;align-items:center;gap:8px;margin:4px 0}.vh .vc .bar{flex:1;margin:0}
+.vh .va{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin:5px 0}
+.vh .vb{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.selbar{position:sticky;bottom:8px;z-index:6;display:flex;gap:8px;align-items:center;background:#282828;color:#fff;border-radius:12px;padding:8px 10px;margin-top:10px;box-shadow:0 4px 14px #0005}
+.selbar select{background:#fff;color:#111;min-width:0}
+@media print{.kfil,.selbar,.vh .vb{display:none}}
+
 </style>
 </head>
 <body>
@@ -250,7 +267,7 @@ var CIUDADES = [
 ];
 var REGIONAL = {co:"REG", nombre:"Eje Cafetero"};
 var ROL_LABEL = {administrador:"Administrador", coordinador:"Coordinador / Supervisor", operario:"Auxiliar de bodega"};
-var MODULO_LABEL = {alistamiento:"Alistamiento", despacho:"Despacho", semaforo:"Semáforos"};
+var MODULO_LABEL = {alistamiento:"Alistamiento", despacho:"Despacho", recibo:"Recibo", semaforo:"Semáforos"};
 var NOMBRE_TIPO = {FAC:"Facturas",PED:"Pedidos",REQ:"Requisiciones",REM:"Remisiones",DOC:"Otros"};
 function ciudadPorCo(co){ return CIUDADES.filter(function(c){ return c.co===co; })[0] || null; }
 function ciudadPorNombre(n){ return CIUDADES.filter(function(c){ return c.nombre===n; })[0] || null; }
@@ -841,6 +858,8 @@ VIEWS.home=function(){
     act.forEach(function(t){ h+=tareaHtml(t,'data-act="abrirtarea" data-id="'+esc(t.id)+'"'); });
     var veh=HOME.libres.filter(function(x){ return x.datos.modulo==="despacho"; }), sinA=HOME.libres.filter(function(x){ return x.datos.modulo==="alistamiento"; });
     if(veh.length) h+='<h2>Vehículos disponibles para cargue</h2><p class="small muted">Si un vehículo lleva dos planillas (por ejemplo PLF y PLI), marca <b>Unir</b> en ambas y cárgalas juntas. Quien lo haga primero cierra la opción.</p>'+veh.map(function(x){ var dd=x.datos; return '<div class="card gold"><b>'+esc(dd.titulo)+'</b><div class="small muted">'+nf(dd.total)+' referencias · escoge este vehículo si lo vas a cargar</div><div class="sp"></div><div class="row"><button class="btn gold grow" data-act="tomarveh" data-id="'+esc(x.id)+'">Cargar este vehículo</button>'+(veh.length>1?'<button class="btn ghost" data-act="unitog" data-id="'+esc(x.id)+'">'+(UNI.sel[x.id]?'☑ Unir':'☐ Unir')+'</button>':'')+'</div></div>'; }).join("")+unirBarraHtml();
+    var rec=HOME.libres.filter(function(x){ return x.datos.modulo==="recibo"; });
+    if(rec.length) h+='<h2>Recibos disponibles</h2><p class="small muted">Vehículos por descargar que nadie ha tomado. Toma el que vayas a recibir.</p>'+rec.map(function(x){ var dd=x.datos; return '<div class="card gold"><b>'+esc(dd.titulo)+'</b><div class="small muted">'+nf(dd.total)+' referencias</div><div class="sp"></div><button class="btn gold block" data-act="tomarveh" data-id="'+esc(x.id)+'">Recibir este vehículo</button></div>'; }).join("");
     if(sinA.length) h+='<h2>Referencias sin asignar</h2>'+sinA.map(function(x){ var dd=x.datos, hh=(dd.ok||0)+(dd.parc||0)+(dd.no||0); return '<div class="card"><b>'+esc(dd.titulo)+'</b><div class="small muted">'+nf(dd.total)+' referencias sin dueño · '+hh+' separadas. Puedes separar las que quieras buscándolas por código o por palabras.</div>'+barra(dd.total?hh/dd.total:0,true)+'<div class="sp"></div><button class="btn block" data-act="abrirlibre" data-id="'+esc(x.id)+'">Abrir y separar</button></div>'; }).join("");    if(!act.length&&!HOME.sem.some(function(x){ return estadoSem(x)!=="completada"; })&&!HOME.libres.length) h+='<div class="empty">'+(HOME.cargando?"Buscando tus tareas…":"No tienes tareas pendientes.<br>Cuando tu coordinador te asigne una, aparecerá aquí.")+'</div>';
     var semFin=HOME.sem.filter(function(x){ return estadoSem(x)==="completada"; });
     if(fin.length||semFin.length){ h+='<h2>Completadas</h2>'; semFin.forEach(function(x){ h+=semCardHtml(x,""); }); fin.slice(0,8).forEach(function(t){ h+=tareaHtml(t,'data-act="abrirtarea" data-id="'+esc(t.id)+'"'); }); }
@@ -854,6 +873,7 @@ VIEWS.home=function(){
     '<button class="tile" data-act="ir" data-v="ali"><div class="ic">▦</div><div><b>Alistamiento</b><span>Cargar facturas, pedidos, requisiciones o remisiones y asignar</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="desp"><div class="ic">⛟</div><div><b>Despacho</b><span>Planilla por vehículo, segundo alistamiento y uso de capacidad</span></div></button>'+
     (puedeEnrutar()?'<button class="tile" data-act="ir" data-v="enrut"><div class="ic">⇄</div><div><b>Enrutador</b><span>Asignar los documentos separados a cada vehículo y carga antes de despachar (piloto)</span></div></button>':'')+
+    '<button class="tile" data-act="ir" data-v="recibos"><div class="ic">▼</div><div><b>Recibo</b><span>Descargar un vehículo contra el traslado (TCO) o la orden de compra</span></div></button>'+
     '<button class="tile" data-act="irrepdesp"><div class="ic">▤</div><div><b>Reporte de despacho</b><span>Consolidado por referencia, vehículo, documento o cliente, con descarga a Excel</span></div></button>'+
     '<button class="tile" data-act="irsem"><div class="ic">◐</div><div><b>Semáforos de vencimiento</b><span>Se abre con tu mismo usuario, sin volver a ingresar</span></div></button>'+
     '</div>'+pendientesHtml()+configEscaneoHtml()+
@@ -903,7 +923,7 @@ VIEWS.tablero=function(){
   topbar("Avance de tareas",subtituloUsuario(),true);
   var co=TB.co||coActual(), h='';
   if(esAdmin()){ h+='<div class="seg">'+CIUDADES.map(function(c){ return '<span class="chip btn2 '+(co===c.co?"sel":"")+'" data-act="tbco" data-co="'+c.co+'">'+c.nombre+'</span>'; }).join("")+'<span class="chip btn2 '+(co==="todas"?"sel":"")+'" data-act="tbco" data-co="todas">Todas</span></div>'; }
-  h+='<div class="seg">'+[["todos","Todo"],["alistamiento","Alistamiento"],["despacho","Despacho"],["semaforo","Semáforos"]].map(function(m){ return '<span class="chip btn2 '+(TB.mod===m[0]?"sel":"")+'" data-act="tbmod" data-m="'+m[0]+'">'+m[1]+'</span>'; }).join("")+
+  h+='<div class="seg">'+[["todos","Todo"],["alistamiento","Alistamiento"],["despacho","Despacho"],["recibo","Recibo"],["semaforo","Semáforos"]].map(function(m){ return '<span class="chip btn2 '+(TB.mod===m[0]?"sel":"")+'" data-act="tbmod" data-m="'+m[0]+'">'+m[1]+'</span>'; }).join("")+
     '<span class="chip btn2" data-act="refrescartb">↻ Actualizar</span></div>';
   if(TB.err) h+='<div class="hint warn">'+esc(TB.err)+'</div>';
   if(!TB.datos){ app(h+'<div class="empty">Cargando avance…</div>'); return; }
@@ -950,6 +970,7 @@ async function abrirTarea(id,ro){
   try{
     var r=await DB.get("ops_tareas",id); if(!r){ toast("La tarea ya no existe"); return; }
     var d=r.datos, libre=d.asignadoId===""&&d.modulo==="alistamiento";
+    if(d.modulo==="recibo"){ if(!esCoord()&&d.asignadoId!==S.me.id){ toast("Esta tarea está asignada a otra persona"); return; } await rcAbrir(id,d); return; }
     if(!ro&&d.asignadoId!==S.me.id&&!libre){ toast("Esta tarea está asignada a otra persona"); return; }
     WM={}; try{ WM=await cargarMatriz(d.co,true); }catch(e){} /* la secuencia y la zona de la matriz vigente se aplican al abrir, aunque la matriz se haya cargado despues de crear la sesion */
     W=armarW(id,d,ro); W.shared=libre&&!ro; TR={q:"",f:ro?"todas":"pend",g:""}; go("trab");
@@ -2706,6 +2727,224 @@ ACT.erpub=async function(el,d){
   catch(e){ toast("No se pudo publicar: "+(e.message||e)); }
 };
 
+/* ===== 64_recibo.js ===== */
+/* ---------- RECIBO: descargue de un vehiculo contra un traslado (TCO) o una orden de compra (OCP). Se guarda como tarea (modulo "recibo") ---------- */
+/* Reglas acordadas:
+   - Un vehiculo trae documentos del mismo tipo: o traslados (TCO/TCA) o una orden de compra (OCP), nunca mezclados.
+   - TCO a bodega RENTAS (terminada en 005): Cant. Saldo ya viene en cajas. A cualquier otra bodega (general, etc.) viene en unidades: se convierte con la U.M. Emp (sin U.M. = 1).
+   - OCP: la cantidad pendiente viene en la U.M. de la orden (UND = unidades; C12/CJ6… = cajas de ese tamano). Solo Aprobado o Parcial.
+   - Se puede recibir menos, nunca mas que lo esperado. */
+var RC={docs:{},sel:{},tareas:[],cargando:false,err:"",aux:"",modo:"ciego",t:null,q:"",f:"pend",verCoord:false};
+var RC_RENTAS=/005$/;
+function rcSerialFecha(n){ n=parseFloat(n); if(!(n>20000)) return String(n||""); return new Date(Math.round((n-25569)*86400000)).toISOString().slice(0,10); }
+function rcFactor(um){ var m=/(\d+)\s*$/.exec(String(um||"").trim()); return m?parseInt(m[1],10):1; }
+function rcPrefijoCo(co){ return String(co||"").slice(-2); }
+/* ---- lectura del Excel de SIESA ---- */
+function rcLeer(lista){
+  var docs={}, err=[], co=coActual(), pre=rcPrefijoCo(co), fuera=0;
+  lista.forEach(function(it){
+    var aoa=null, hdr=null, ini=0;
+    var hojas=it.wb.SheetNames; for(var s=0;s<hojas.length&&!hdr;s++){ var a=XLSX.utils.sheet_to_json(it.wb.Sheets[hojas[s]],{header:1,raw:true,defval:""});
+      for(var i=0;i<Math.min(a.length,25)&&!hdr;i++){ var n=a[i].map(normH); if((n.indexOf("nro documento")>=0&&n.indexOf("cant. saldo")>=0)||(n.indexOf("nro orden")>=0&&n.indexOf("cant. pendiente")>=0)){ aoa=a; hdr=n; ini=i+1; } } }
+    if(!hdr){ err.push(it.f.name+": no es un archivo de TCO en tránsito ni de órdenes de compra"); return; }
+    var c=function(){ for(var k=0;k<arguments.length;k++){ var j=hdr.indexOf(arguments[k]); if(j>=0) return j; } return -1; };
+    var tco=hdr.indexOf("nro documento")>=0;
+    var iDoc=tco?c("nro documento"):c("nro orden"), iRef=c("referencia"), iBar=c("codigo barras principal","codigo barra principal"), iDes=tco?c("item resumen"):c("desc. item"), iUm=tco?c("u.m. emp"):c("u.m."), iQty=tco?c("cant. saldo"):c("cant. pendiente"),
+        iBod=tco?c("bod. entrada"):c("bodega"), iBodD=tco?c("desc. bod. entrada"):-1, iOri=tco?c("desc. bod. salida"):c("razon social proveedor"), iNota=c("notas del docto"), iFec=tco?c("fecha"):c("fecha creacion"), iEst=c("estado");
+    for(var r=ini;r<aoa.length;r++){
+      var row=aoa[r], id=String(row[iDoc]||"").trim(); if(!id) continue;
+      var bod=String(row[iBod]||"").trim(); if(bod.slice(0,2)!==pre){ fuera++; continue; }
+      var est=iEst>=0?String(row[iEst]||"").trim():""; if(!tco&&est&&!/^(aprobado|parcial)$/i.test(est)) continue;
+      var ref=normRef(String(row[iRef]||"").trim()); var q=parseDbl(row[iQty]); if(!ref||!(q>0)) continue;
+      var um=String(row[iUm]||"").trim(), f=rcFactor(um), rentas=RC_RENTAS.test(bod), units, ue;
+      if(tco){ ue=f>1?f:1; units=rentas?q*ue:q; }
+      else { ue=null; units=Math.round(q*(/^und/i.test(um)?1:f)); ue=/^und/i.test(um)?null:f; }
+      var d=docs[id]; if(!d) d=docs[id]={id:id,tipo:tco?"TCO":"OCP",bod:bod,bodDesc:iBodD>=0?String(row[iBodD]||"").trim():"",origen:iOri>=0?String(row[iOri]||"").trim():"",nota:iNota>=0?String(row[iNota]||"").trim():"",fecha:iFec>=0?rcSerialFecha(row[iFec]):"",lineas:[],enCajas:tco&&rentas};
+      d.lineas.push({ref:ref,desc:descLimpia(row[iDes],ref),bar:String(row[iBar]||"").trim(),ue:ue,um:um,units:Math.round(units)});
+    }
+  });
+  return {docs:docs,err:err,fuera:fuera};
+}
+/* ---- coordinador: cargar documentos, elegirlos y crear el recibo ---- */
+async function cargarRecibos(){
+  var co=coActual(); RC.cargando=true; RC.err="";
+  try{ await cargarBase(false,co).catch(function(){}); RC.tareas=await tareasDe({"datos->>co":"eq."+co,"datos->>modulo":"eq.recibo"}); }
+  catch(e){ RC.err=e.message||"Sin conexión"; }
+  RC.cargando=false; var c=cur(); if(c&&c.v==="recibos"&&!$(".sheet-bg")) render();
+}
+function rcRes(d){ var u=0,r=d.lineas.length; d.lineas.forEach(function(l){ u+=l.units; }); return {u:u,r:r}; }
+VIEWS.recibos=function(){
+  topbar("Recibo",subtituloUsuario(),true);
+  var h=selectorCiudad("rcco")+'<h1>Recibo de mercancía</h1><div class="hint">Cuando llega un vehículo, descarga de SIESA el <b>TCO en tránsito</b> (abastecimiento) o las <b>órdenes de compra</b> y cárgalo aquí: la app deja solo los documentos de tu ciudad. Elígelos, asígnalos a un auxiliar (o déjalos libres) y él cuenta lo que llega. Un vehículo no mezcla traslados con órdenes de compra.</div>';
+  if(RC.err) h+='<div class="hint warn">'+esc(RC.err)+'</div>';
+  h+='<button class="btn block" data-act="rccargar">Cargar Excel de SIESA (TCO en tránsito u órdenes de compra)</button>';
+  var ids=Object.keys(RC.docs).sort();
+  if(ids.length){
+    var tipoSel=null; Object.keys(RC.sel).forEach(function(i){ if(RC.docs[i]) tipoSel=RC.docs[i].tipo; });
+    h+='<h2>Documentos de '+esc((ciudadPorCo(coActual())||{nombre:""}).nombre)+' ('+ids.length+')</h2>';
+    h+=ids.map(function(id){ var d=RC.docs[id], r=rcRes(d), on=!!RC.sel[id], ya=RC.tareas.some(function(t){ return (t.datos.docsN||[]).indexOf(id)>=0; });
+      return '<button class="task" data-act="rcsel" data-d="'+esc(id)+'"><div class="tt"><b class="mono">'+(on?'☑ ':'☐ ')+esc(id)+'</b><span class="chip '+(d.tipo==="TCO"?"info":"st-ok")+'">'+(d.tipo==="TCO"?"Traslado":"Orden de compra")+'</span></div><div class="sub">'+esc(d.origen||"")+(d.bodDesc?' → '+esc(d.bodDesc):' · bodega '+esc(d.bod))+'</div><div class="mini"><span class="chip">'+r.r+' referencias</span><span class="chip">'+nf(r.u)+' u.</span>'+(d.fecha?'<span class="chip info">'+esc(d.fecha.slice(5))+'</span>':'')+(ya?'<span class="chip warn">Ya tiene recibo</span>':'')+'</div>'+(d.nota?'<div class="small muted">'+esc(d.nota.slice(0,90))+'</div>':'')+'</button>'; }).join("");
+    var n=Object.keys(RC.sel).filter(function(i){ return RC.docs[i]; }).length;
+    if(n){ var ops=usuariosDe(coActual(),"operario");
+      h+='<div class="card gold"><b>Crear recibo con '+n+' documento'+(n>1?'s':'')+'</b>'+
+        '<div class="row" style="margin-top:6px"><select id="rcaux" class="grow"><option value="">Libre: lo toma cualquier auxiliar</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'"'+(RC.aux===u.id?' selected':'')+'>Asignar a '+esc(u.nombre)+'</option>'; }).join("")+'</select></div>'+
+        '<label class="lb">Cómo se cuenta</label><div class="seg"><span class="chip btn2 '+(RC.modo==="ciego"?"sel":"")+'" data-act="rcmodo0" data-m="ciego">Ciego (recomendado)</span><span class="chip btn2 '+(RC.modo==="guiado"?"sel":"")+'" data-act="rcmodo0" data-m="guiado">Guiado en tiempo real</span></div>'+
+        '<p class="small muted">Ciego: el auxiliar cuenta sin ver lo esperado y revisa por estiba. Guiado: ve lo esperado y lo que falta mientras cuenta. Para el listado en papel, créalo y usa «Imprimir listado sin cantidades».</p>'+
+        '<button class="btn gold block" data-act="rccrear">Crear recibo</button></div>'; }
+  }
+  var act=RC.tareas.filter(function(t){ return t.datos.estado!=="completada"; }), fin=RC.tareas.filter(function(t){ return t.datos.estado==="completada"; });
+  h+='<h2>Recibos en curso ('+act.length+')</h2>'+(act.length?act.map(function(t){ return rcTareaHtml(t); }).join(""):'<div class="empty">'+(RC.cargando?"Cargando…":"No hay recibos en curso.")+'</div>');
+  if(fin.length) h+='<h2>Recibos terminados</h2>'+fin.slice(0,15).map(function(t){ return rcTareaHtml(t); }).join("");
+  app(h);
+  var sa=$("#rcaux"); if(sa) sa.onchange=function(){ RC.aux=sa.value; };
+};
+function rcTareaHtml(t){ var d=t.datos; return '<button class="task '+(d.estado==="completada"?"ok":d.estado==="en_curso"?"curso":"")+'" data-act="vertarea" data-id="'+esc(t.id)+'"><div class="tt"><b>'+esc(d.titulo)+'</b>'+estadoChip(d.estado||"pendiente")+'</div><div class="sub">'+esc(d.asignadoNombre||"Sin asignar")+' · '+esc(d.fecha||"")+' · '+(d.ok||0)+' de '+(d.total||0)+' referencias con conteo</div>'+barra(d.total?(d.ok||0)/d.total:0,true)+'</button>'; }
+ACT.rcco=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); RC.docs={}; RC.sel={}; RC.tareas=[]; render(); cargarRecibos(); };
+ACT.rccargar=function(){
+  elegirExcels(function(lista){
+    var r=rcLeer(lista), n=Object.keys(r.docs).length;
+    r.err.forEach(function(e){ toast(e,5000); });
+    Object.keys(r.docs).forEach(function(k){ RC.docs[k]=r.docs[k]; });
+    toast(n?n+" documentos de tu ciudad"+(r.fuera?" · "+nf(r.fuera)+" líneas de otras ciudades omitidas":""):(r.err.length?"":"No hay documentos de tu ciudad en este archivo"),5000);
+    render();
+  });
+};
+ACT.rcsel=function(el,d){ var id=d("d"); if(RC.sel[id]) delete RC.sel[id]; else RC.sel[id]=1; render(); };
+ACT.rcmodo0=function(el,d){ RC.modo=d("m"); render(); };
+ACT.rccrear=async function(){
+  var ids=Object.keys(RC.sel).filter(function(i){ return RC.docs[i]; }); if(!ids.length){ toast("Elige al menos un documento"); return; }
+  var tipos=uniq(ids.map(function(i){ return RC.docs[i].tipo; }));
+  if(tipos.length>1){ toast("Un vehículo no mezcla traslados con órdenes de compra: elige solo un tipo",5000); return; }
+  var ya=ids.filter(function(i){ return RC.tareas.some(function(t){ return (t.datos.docsN||[]).indexOf(i)>=0; }); });
+  if(ya.length&&!confirm("Estos documentos ya tienen un recibo: "+ya.join(", ")+". ¿Crear otro de todas formas?")) return;
+  var co=coActual(), mp={}, det={};
+  ids.forEach(function(i){ var d=RC.docs[i]; det[i]=[]; d.lineas.forEach(function(l){ var m=S.mae[l.ref]||{}, ue=l.ue>1?l.ue:(m.u>1?m.u:1); var it=mp[l.ref]; if(!it) it=mp[l.ref]={ref:l.ref,desc:l.desc||m.d||"",bar:l.bar||m.b||"",ue:ue,total:0,grupo:m.g||"SIN GRUPO",linea:m.l||"SIN LÍNEA"}; if(ue>it.ue) it.ue=ue; it.total+=l.units; det[i].push([l.ref,l.units]); }); });
+  var items=Object.keys(mp).sort(ordenRef).map(function(k){ return mp[k]; });
+  var ciudad=(ciudadPorCo(co)||{nombre:co}).nombre, sid="RC"+hoy().slice(2).replace(/-/g,"")+"-"+rid(3), aux=($("#rcaux")||{}).value||"";
+  var titulo="Recibo "+(tipos[0]==="TCO"?"traslado ":"orden de compra ")+ids.slice(0,2).join(", ")+(ids.length>2?" +"+(ids.length-2):"")+" · "+ciudad;
+  var doc=tareaDoc("recibo",sid,titulo,co,aux,items,{tipo:tipos[0],docsN:ids,det:det,modo:RC.modo,cont:{},origen:uniq(ids.map(function(i){ return RC.docs[i].origen; }).filter(Boolean)).join(" · "),bod:uniq(ids.map(function(i){ return RC.docs[i].bod; })).join(", ")});
+  try{ await DB.set("ops_tareas",doc.id,doc.datos); RC.sel={}; toast("Recibo creado"+(aux?" y asignado a "+nombreDe(aux):" (libre para los auxiliares)"),4500); await cargarRecibos(); }
+  catch(e){ toast("No se pudo crear: "+(e.message||e)); }
+};
+/* ---- vista de conteo (auxiliar o coordinador) ---- */
+async function rcAbrir(id,d){
+  var WMx={}; try{ WMx=await cargarMatriz(d.co,true); }catch(e){}
+  RC.t={id:id,d:d,wm:WMx}; RC.q=""; RC.f="pend"; RC.verCoord=esCoord(); go("recibo");
+}
+function rcItems(){
+  var d=RC.t.d, cont=d.cont||{}, wm=RC.t.wm||{};
+  return (d.items||[]).map(function(a){ var m=wm[a[0]], g=m&&m.auxiliarId?nombreDe(m.auxiliarId):"Sin grupo"; return {ref:a[0],desc:a[1],bar:a[2],ue:a[3]||1,esp:a[4],grupo:g,cont:cont[a[0]]}; });
+}
+function rcOrden(a,b){
+  var f=function(it){ var c=it.ue>1?Math.floor(it.esp/it.ue):0; return {c:c,s:it.esp-c*(it.ue>1?it.ue:1)}; }, x=f(a), y=f(b);
+  if((x.c>0)!==(y.c>0)) return x.c>0?-1:1; if(x.c!==y.c) return y.c-x.c; if(x.s!==y.s) return y.s-x.s; return ordenRef(a.ref,b.ref);
+}
+function rcPuede(){ var d=RC.t.d; return d.estado!=="completada"&&(d.asignadoId===S.me.id||esCoord()); }
+function rcVeEsperado(){ return RC.t.d.modo==="guiado"||RC.verCoord; }
+VIEWS.recibo=function(){
+  if(!RC.t){ back(); return; }
+  var d=RC.t.d, its=rcItems(), cont=0, rev=0; its.forEach(function(i){ if(i.cont>0) cont++; });
+  topbar(d.titulo||"Recibo",d.asignadoNombre||"Sin asignar",true);
+  var h='<div class="row" style="margin:0 0 6px"><b class="grow">'+(d.tipo==="TCO"?"Traslado":"Orden de compra")+' · '+esc(d.fecha||"")+'</b>'+estadoChip(d.estado||"pendiente")+'</div>';
+  h+='<div class="small muted" style="margin-bottom:6px">Documentos: '+(d.docsN||[]).map(function(x){ return '<span class="mono">'+esc(x)+'</span>'; }).join(" · ")+(d.origen?' · '+esc(d.origen):'')+'</div>';
+  h+='<div class="kpis"><div class="kpi"><b>'+cont+'</b><span>Con conteo</span></div><div class="kpi"><b>'+(its.length-cont)+'</b><span>Sin contar</span></div><div class="kpi"><b>'+its.length+'</b><span>Referencias</span></div></div><div style="margin:10px 0">'+barra(its.length?cont/its.length:0,true)+'</div>';
+  if(d.estado==="completada") h+='<div class="hint">Recibo cerrado'+(d.cierrePor?' por '+esc(nombreDe(d.cierrePor)):'')+(d.cierreEn?' · '+esc(hora(d.cierreEn)):'')+'.</div>';
+  h+='<div class="seg" style="margin-bottom:8px"><span class="small muted" style="align-self:center">Modo:</span><span class="chip btn2 '+(d.modo!=="guiado"?"sel":"")+'" '+(rcPuede()?'data-act="rcmodo1" data-m="ciego"':'')+'>Ciego</span><span class="chip btn2 '+(d.modo==="guiado"?"sel":"")+'" '+(rcPuede()?'data-act="rcmodo1" data-m="guiado"':'')+'>Guiado</span>'+(esCoord()?'<span class="chip btn2 '+(RC.verCoord?"sel":"")+'" data-act="rcvercoord">Ver esperado</span>':'')+'</div>';
+  h+='<div class="row">'+(rcPuede()?'<button class="btn gold grow" data-act="rcescanear">Escanear producto</button>':'')+'<input type="search" id="rcbq" class="grow" placeholder="Buscar referencia o descripción" value="'+esc(RC.q)+'"></div>';
+  h+='<div class="tabs"><span class="chip btn2 '+(RC.f==="pend"?"sel":"")+'" data-act="rcfilt" data-f="pend">Sin contar</span><span class="chip btn2 '+(RC.f==="todas"?"sel":"")+'" data-act="rcfilt" data-f="todas">Todas</span><span class="chip btn2 '+(RC.f==="cont"?"sel":"")+'" data-act="rcfilt" data-f="cont">Contadas</span></div>';
+  h+='<div id="rclista">'+rcListaHtml()+'</div>';
+  h+='<div class="sp"></div><button class="btn ghost block" data-act="rcrev" data-g="">Revisar todo lo contado</button>';
+  if(esCoord()) h+='<div class="sp"></div><button class="btn ghost block" data-act="rcimprimir">Imprimir listado sin cantidades</button><div class="sp"></div><button class="btn ghost block" data-act="rcexcel">Descargar informe (Excel)</button>';
+  if(rcPuede()) h+='<div class="sp"></div><button class="btn gold block" data-act="rcfin">Finalizar recibo</button>';
+  if(esCoord()&&d.estado==="completada") h+='<div class="sp"></div><button class="btn ghost block" data-act="rcreabrir">Reabrir recibo</button>';
+  if(esCoord()) h+='<div class="sp"></div><button class="btn red sm" data-act="rceliminar">Eliminar recibo</button>';
+  app(h);
+  var bq=$("#rcbq"); if(bq) bq.oninput=function(){ RC.q=bq.value; $("#rclista").innerHTML=rcListaHtml(); };
+};
+function rcListaHtml(){
+  var d=RC.t.d, its=rcItems(), q=normH(RC.q), ve=rcVeEsperado(), grupos={}, orden=[];
+  its.filter(function(i){ if(RC.f==="pend"&&i.cont>0) return false; if(RC.f==="cont"&&!(i.cont>0)) return false; return !q||normH(i.ref+" "+i.desc).indexOf(q)>=0; }).sort(rcOrden).forEach(function(i){ if(!grupos[i.grupo]){ grupos[i.grupo]=[]; orden.push(i.grupo); } grupos[i.grupo].push(i); });
+  orden.sort();
+  var h=orden.map(function(g){ var tot=its.filter(function(i){ return i.grupo===g; }), ct=tot.filter(function(i){ return i.cont>0; }).length;
+    return '<div class="row" style="margin-top:12px"><b class="grow">Estiba de '+esc(g)+' <small class="muted">('+ct+' de '+tot.length+')</small></b><button class="btn ghost sm" data-act="rcrev" data-g="'+esc(g)+'">Revisar estiba</button></div>'+
+      grupos[g].map(function(i){ var c=i.cont||0, est=c<=0?"":(ve?(c>=i.esp?"ok":"parc"):"ok");
+        return '<div class="line '+est+'" data-act="rcln" data-r="'+esc(i.ref)+'"><div style="min-width:0"><div class="r">'+esc(i.ref)+'</div><div class="d">'+esc(i.desc)+'</div><div class="row">'+(c>0?'<span class="chip '+(ve&&c<i.esp?'warn':'st-ok')+'">Contado '+esc(fmtQty(c,i.ue))+'</span>':'<span class="chip info">Sin contar</span>')+(ve&&c>0&&c<i.esp?'<span class="chip warn">Faltan '+esc(fmtQty(i.esp-c,i.ue))+'</span>':'')+'</div></div><div class="q">'+(ve?esc(fmtQty(i.esp,i.ue)):'<span class="muted">—</span>')+'</div></div>'; }).join(""); }).join("");
+  return h||'<p class="muted" style="text-align:center;padding:20px">No hay referencias en este filtro.</p>';
+}
+ACT.rcfilt=function(el,d){ RC.f=d("f"); render(); };
+ACT.rcvercoord=function(){ RC.verCoord=!RC.verCoord; render(); };
+ACT.rcmodo1=async function(el,d){ var m=d("m"); if(!rcPuede()) return; try{ await DB.patch("ops_tareas",RC.t.id,{modo:m,actualizadoEn:ahora()}); RC.t.d.modo=m; render(); }catch(e){ toast("No se pudo cambiar: "+(e.message||e)); } };
+ACT.rcescanear=function(){ escanear("Escanear producto",function(code){ var c=normCod(code), it=rcItems().filter(function(i){ return (normCod(i.bar)&&normCod(i.bar)===c)||normCod(i.ref)===c; })[0]; if(!it){ toast("Ese producto no está en este documento: apártalo e informa al coordinador",5000); return; } rcConteo(it.ref); }); };
+ACT.rcln=function(el,d){ if(!rcPuede()){ toast("Solo lectura"); return; } rcConteo(d("r")); };
+function rcConteo(ref){
+  var it=rcItems().filter(function(i){ return i.ref===ref; })[0]; if(!it) return; var ve=rcVeEsperado(), cc=it.cont||0, hayC=it.ue>1;
+  var bg=abrirSheet('<div class="row"><span class="r mono" style="font-weight:700;color:var(--gold-dark)">'+esc(it.ref)+'</span><span class="chip info">'+esc(it.grupo)+'</span></div><h3>'+esc(it.desc)+'</h3><div class="muted small">Código de barras: <span class="mono">'+esc(it.bar||"sin dato")+'</span>'+(hayC?' · empaque de '+it.ue:'')+'</div><div class="sp"></div>'+
+    (ve?'<div class="muted small">Esperado</div><div class="big">'+esc(fmtQty(it.esp,it.ue))+'</div><div class="sp"></div>':'')+
+    '<div class="muted small">Contado hasta ahora</div><div class="big">'+(cc>0?esc(fmtQty(cc,it.ue)):'0')+'</div><div class="sp"></div>'+
+    '<div class="row">'+(hayC?'<div class="grow"><label class="lb" style="margin-top:0">Cajas</label><input id="rcC" type="number" min="0" inputmode="numeric" placeholder="0"></div>':'')+'<div class="grow"><label class="lb" style="margin-top:0">Unidades sueltas</label><input id="rcU" type="number" min="0" inputmode="numeric" placeholder="0"></div></div><div class="sp"></div>'+
+    '<button class="btn gold block" id="rcSum">Sumar a lo contado</button><div class="sp"></div><button class="btn ghost block" id="rcSet">Fijar como total contado</button>'+(cc>0?'<div class="sp"></div><button class="btn ghost sm" id="rcClr">Borrar el conteo de esta referencia</button>':'')+'<div class="sp"></div><button class="btn ghost block" id="rcX">Cerrar</button>');
+  var val=function(){ var c=hayC?(parseInt($("#rcC",bg).value,10)||0):0, u=parseInt($("#rcU",bg).value,10)||0; return c*it.ue+u; };
+  var go2=async function(modo,v){ var r=await rcGuardar(ref,modo,v); if(r.err){ toast(r.err,5500); return; } cerrarSheet(); render(); };
+  $("#rcSum",bg).onclick=function(){ var v=val(); if(!(v>0)){ toast("Escribe una cantidad"); return; } go2("sum",v); };
+  $("#rcSet",bg).onclick=function(){ go2("set",val()); };
+  if($("#rcClr",bg)) $("#rcClr",bg).onclick=function(){ go2("set",0); };
+  $("#rcX",bg).onclick=cerrarSheet;
+}
+/* Lee lo ultimo de la nube, aplica la cantidad y guarda (asi no se pisan dos personas contando) */
+async function rcGuardar(ref,modo,v){
+  try{
+    var r=await DB.get("ops_tareas",RC.t.id); if(!r) return {err:"El recibo ya no existe"}; var d=r.datos;
+    if(d.estado==="completada") return {err:"Este recibo ya está cerrado"};
+    var it=(d.items||[]).filter(function(a){ return a[0]===ref; })[0]; if(!it) return {err:"Esa referencia no está en el recibo"};
+    var cont=d.cont||{}, nv=modo==="set"?v:(cont[ref]||0)+v;
+    if(nv>it[4]) return {err:"Supera lo que debía llegar de esta referencia. No se puede recibir de más: revisa el conteo o informa al coordinador."};
+    if(nv>0) cont[ref]=nv; else delete cont[ref];
+    var ok=Object.keys(cont).length, estado=ok>0?"en_curso":"pendiente";
+    await DB.patch("ops_tareas",RC.t.id,{cont:cont,ok:ok,estado:estado,actualizadoEn:ahora(),actualizadoPor:S.me.id});
+    d.cont=cont; d.ok=ok; d.estado=estado; RC.t.d=d; return {};
+  }catch(e){ return {err:"No se pudo guardar: "+(e.message||e)}; }
+}
+/* Revision: contra lo esperado, por estiba o de todo lo contado */
+function rcEstadoRef(i){ var c=i.cont||0; if(c<=0) return {k:"sin",t:"Sin contar",cls:"info"}; if(c===i.esp) return {k:"ok",t:"Completo ✓",cls:"st-ok"}; return {k:"falta",t:"Falta "+fmtQty(i.esp-c,i.ue),cls:"warn"}; }
+ACT.rcrev=function(el,d){
+  var g=d("g"), its=rcItems().filter(function(i){ return !g||i.grupo===g; }).sort(rcOrden); if(!g) its=its.filter(function(i){ return i.cont>0; });
+  var okn=its.filter(function(i){ return rcEstadoRef(i).k==="ok"; }).length, fal=its.filter(function(i){ return rcEstadoRef(i).k==="falta"; }).length, sin=its.filter(function(i){ return rcEstadoRef(i).k==="sin"; }).length;
+  var bg=abrirSheet('<h3>'+(g?'Revisión · estiba de '+esc(g):'Revisión de lo contado')+'</h3><div class="row"><span class="chip st-ok">'+okn+' completas</span><span class="chip warn">'+fal+' con faltante</span>'+(g?'<span class="chip info">'+sin+' sin contar</span>':'')+'</div><p class="small muted">Las que faltan: busca en el vehículo si hay más de esa referencia (cola, mitad, frente). Si ya no hay, quedará como faltante.</p><div style="max-height:50vh;overflow:auto">'+
+    its.map(function(i){ var e=rcEstadoRef(i); return '<div class="row small" style="margin-top:6px;align-items:flex-start"><span class="grow"><b class="mono">'+esc(i.ref)+'</b> '+esc(i.desc)+'<br><span class="muted">Contado '+esc(i.cont>0?fmtQty(i.cont,i.ue):"0")+' de '+esc(fmtQty(i.esp,i.ue))+'</span></span><span class="chip '+e.cls+'">'+esc(e.t)+'</span></div>'; }).join("")+'</div><div class="sp"></div><button class="btn ghost block" id="rvX">Cerrar</button>');
+  $("#rvX",bg).onclick=cerrarSheet;
+};
+ACT.rcfin=async function(){
+  var its=rcItems(), fal=its.filter(function(i){ return (i.cont||0)<i.esp; }), sin=its.filter(function(i){ return !(i.cont>0); });
+  var msg=fal.length?"Quedan "+fal.length+" referencias con faltante ("+sin.length+" sin contar). Se registrarán como novedad. ¿Finalizar el recibo?":"Todo coincide con lo esperado. ¿Finalizar el recibo?";
+  if(!confirm(msg)) return;
+  try{ var nov=fal.map(function(i){ return [i.ref,i.esp,i.cont||0]; }); await DB.patch("ops_tareas",RC.t.id,{estado:"completada",cierreEn:ahora(),cierrePor:S.me.id,nov:nov,actualizadoEn:ahora()}); RC.t.d.estado="completada"; RC.t.d.cierreEn=ahora(); RC.t.d.cierrePor=S.me.id; RC.t.d.nov=nov; toast("Recibo finalizado"+(fal.length?" con "+fal.length+" novedades":""),4500); render(); }
+  catch(e){ toast("No se pudo finalizar: "+(e.message||e)); }
+};
+ACT.rcreabrir=async function(){ try{ await DB.patch("ops_tareas",RC.t.id,{estado:"en_curso",actualizadoEn:ahora()}); RC.t.d.estado="en_curso"; render(); }catch(e){ toast("No se pudo reabrir: "+(e.message||e)); } };
+ACT.rceliminar=async function(){ if(!confirm("¿Eliminar este recibo? Se pierde el conteo. No se puede deshacer.")) return; try{ await DB.del("ops_tareas",RC.t.id); RC.t=null; toast("Recibo eliminado"); back(); cargarRecibos(); }catch(e){ toast("No se pudo eliminar: "+(e.message||e)); } };
+ACT.rcexcel=function(){
+  var d=RC.t.d, its=rcItems().sort(rcOrden), det=d.det||{};
+  var docsDe=function(ref){ return Object.keys(det).filter(function(k){ return det[k].some(function(x){ return x[0]===ref; }); }).join(" / "); };
+  var filas=[["Documentos","Referencia","Descripcion","Codigo de barras","U.E","Esperado (u.)","Esperado cajas","Esperado sueltas","Contado (u.)","Contado cajas","Contado sueltas","Diferencia (u.)","Estado"]].concat(its.map(function(i){ var e=cajasSueltas(i.esp,i.ue), c=cajasSueltas(i.cont||0,i.ue), df=(i.cont||0)-i.esp; return [docsDe(i.ref),i.ref,i.desc,i.bar,i.ue,i.esp,e.c,e.s,i.cont||0,c.c,c.s,df,(i.cont||0)<=0?"Sin contar":df===0?"Completo":"Faltante"]; }));
+  descargarXlsx("Recibo_"+(d.docsN||[""])[0]+".xlsx","Recibo",filas);
+};
+ACT.rcimprimir=function(){ go("rcimprimir"); };
+VIEWS.rcimprimir=function(){
+  topbar("Listado sin cantidades",subtituloUsuario(),true);
+  if(!RC.t){ back(); return; }
+  var d=RC.t.d, its=rcItems().sort(function(a,b){ return a.grupo<b.grupo?-1:a.grupo>b.grupo?1:ordenRef(a.ref,b.ref); });
+  var h='<div class="noprint"><div class="row"><h1 class="grow" style="margin:6px 0">Listado para el descargue</h1><button class="btn gold sm" data-act="cdimprimir">Imprimir</button></div><div class="hint" style="margin-bottom:8px">Papel <b>Carta</b>, diseño <b>Horizontal</b>, escala <b>100%</b>. El auxiliar anota lo que cuenta y se lo dicta al coordinador, quien lo digita en la app.</div></div>';
+  h+='<div class="lst-sheet"><div class="lst-title">LISTADO PARA EL DESCARGUE · '+esc(d.ciudad||"")+'</div><div class="lst-head"><table class="lst-res"><tr><th>Documentos</th><td>'+esc((d.docsN||[]).join(" · "))+'</td><th>Tipo</th><td>'+(d.tipo==="TCO"?"Traslado":"Orden de compra")+'</td><th>Fecha</th><td>'+esc(d.fecha||"")+'</td></tr></table></div>'+
+    '<table class="lst"><thead><tr><th>Estiba</th><th class="c-ref">Referencia</th><th class="dc">Descripción</th><th>Código de barras</th><th class="n c-ue">U.E</th><th class="n c-q">Cajas</th><th class="n c-q">Unidades</th></tr></thead><tbody>'+
+    its.map(function(i){ return '<tr><td>'+esc(i.grupo)+'</td><td><b>'+esc(i.ref)+'</b></td><td class="dc">'+esc(i.desc)+'</td><td class="mono">'+esc(i.bar||"")+'</td><td class="n">'+esc(i.ue)+'</td><td class="n">&nbsp;</td><td class="n">&nbsp;</td></tr>'; }).join("")+'</tbody></table></div>';
+  app(h);
+};
+/* Actualizacion automatica del recibo abierto (por si el coordinador y el auxiliar cuentan a la vez) */
+async function rcRefrescar(){
+  if(!RC.t||$(".sheet-bg")) return;
+  try{ var r=await DB.get("ops_tareas",RC.t.id); if(r){ RC.t.d=r.datos; var c=cur(); if(c&&c.v==="recibo"){ var a=document.activeElement; if(!(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))) render(); } } }catch(e){}
+}
+
 /* ===== 65_listado.js ===== */
 /* ---------- rutas por poblacion y listado de separacion impreso (para bodegas sin RF ni matriz formal) ---------- */
 function claveCiu(c){ return normH(c).replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); }
@@ -2829,6 +3068,96 @@ VIEWS.listado=function(){
   if(t.sin.length) h+='<div class="hint warn noprint" style="margin-top:10px"><b>'+t.sin.length+' referencias sin peso o volumen en el maestro</b>: el peso y el volumen estimados quedan por debajo de lo real. Complétalas en Administración → Maestro.</div>';
   app(h);
 };
+/* ===== 66_desp_panel.js ===== */
+/* ---------- Despacho (coordinador): tablero de vehiculos por estado, con alertas y publicacion directa. Reemplaza la vista larga anterior ---------- */
+var DS={est:"todos",datos:false,conc:false,q:""};
+var DS_EST={pub:["Por publicar","info"],libre:["Publicado · sin tomar","warn"],curso:["En carga","st-curso"],fin:["Terminado","st-ok"]};
+function dsEstado(c){ var tk=tareaDePlanilla(c.pl); if(!tk) return "pub"; var d=tk.datos; if(d.estado==="completada") return "fin"; return d.asignadoId?"curso":"libre"; }
+function dsAlertas(c){
+  var a=[], sa=sinAlistarDe(c.pl); if(sa.length) a.push({t:sa.length+" doc. sin separar",cls:"bad",grave:true});
+  var sp=sepResumen(c); if(sp&&!sa.length) a.push({t:"Separación incompleta",cls:"warn"});
+  if(plateOk(c.pl.placa)){ var f=faltasVeh(S.veh[c.pl.placa]||{}); if(f.length) a.push({t:"Faltan datos del vehículo",cls:"warn",placa:true}); }
+  if(c.v&&c.v.k==="inc") a.push({t:"Faltan facturas por cargar ("+c.conLin+"/"+c.pl.facs.length+")",cls:"warn"});
+  return a;
+}
+function dsListos(c){ return !tareaDePlanilla(c.pl)&&c.items.length&&!sinAlistarDe(c.pl).length; }
+function dsFiltrar(cal){
+  var q=normH(DS.q);
+  return cal.filter(function(c){
+    if(DF.fecha&&c.pl.fecha!==DF.fecha) return false;
+    var e=dsEstado(c); if(DS.est==="alert"){ if(!dsAlertas(c).length) return false; } else if(DS.est!=="todos"&&e!==DS.est) return false;
+    if(q){ var v=S.veh[c.pl.placa]||{}; if(normH(c.pl.placa+" "+etiquetaPl(c.pl)+" "+(v.conductor||"")+" "+c.pl.facs.join(" ")).indexOf(q)<0) return false; }
+    return true;
+  });
+}
+function dsTarjeta(c,i,libres){
+  var pl=c.pl, tk=tareaDePlanilla(pl), e=dsEstado(c), al=dsAlertas(c), v=c.v, u=v.u, vv=S.veh[pl.placa]||{}, sel=!!SELP[pl.num], lis=dsListos(c);
+  var bc=v.k==="des"?"w":v.k==="sob"?"b":v.k==="bien"?"u":"";
+  var h='<div class="vh '+e+'"><div class="vt">'+(lis?'<button class="ck" data-act="selpl" data-n="'+esc(pl.num)+'" title="Elegir">'+(sel?'☑':'☐')+'</button>':'')+
+    '<div class="grow" data-act="abrirpl" data-i="'+i+'"><b class="mono pl">'+esc(pl.placa)+'</b> <span class="small muted">'+esc(vv.conductor||(pl.revision?"orden de verificación":"sin conductor"))+'</span></div><span class="chip '+DS_EST[e][1]+'">'+DS_EST[e][0]+'</span></div>'+
+    '<div class="vs" data-act="abrirpl" data-i="'+i+'">'+esc(etiquetaPl(pl))+' · '+esc(String(pl.fecha).slice(5))+' · <b>'+c.conLin+'/'+pl.facs.length+'</b> docs · '+nf(c.c.cj)+' cajas · '+nf(c.c.und)+' u. · '+nf(c.c.kg)+' kg</div>';
+  if(u!=null) h+='<div class="vc" data-act="abrirpl" data-i="'+i+'"><div class="bar '+bc+'"><i style="width:'+Math.min(100,Math.round(u*100))+'%"></i></div><span class="small"><b>'+pct(u)+'</b> de la capacidad · '+esc(v.t)+'</span></div>';
+  else if(plateOk(pl.placa)) h+='<div class="small muted" data-act="abrirpl" data-i="'+i+'">Sin capacidad registrada para esta placa.</div>';
+  if(al.length) h+='<div class="va">'+al.map(function(a){ return '<span class="chip '+a.cls+'">⚠ '+esc(a.t)+'</span>'; }).join("")+(al.some(function(a){ return a.placa; })?' <button class="btn ghost sm" data-act="vhplaca" data-p="'+esc(pl.placa)+'">Completar</button>':'')+'</div>';
+  if(tk){ var d=tk.datos, hh=(d.ok||0)+(d.parc||0)+(d.no||0); h+='<div class="vc"><div class="bar big"><i style="width:'+Math.round((d.total?hh/d.total:0)*100)+'%"></i></div><span class="small">'+(d.asignadoId?'Carga: <b>'+esc(d.asignadoNombre||"")+'</b>':'Esperando a un auxiliar')+' · '+hh+'/'+(d.total||0)+'</span></div>'; }
+  h+='<div class="vb">';
+  if(lis) h+='<button class="btn gold sm" data-act="pubuno" data-n="'+esc(pl.num)+'">Publicar</button>';
+  h+='<button class="btn ghost sm" data-act="abrirpl" data-i="'+i+'">Abrir</button>';
+  if(tk&&e==="libre"&&libres>1) h+='<button class="btn ghost sm" data-act="unitog" data-id="'+esc(tk.id)+'">'+(UNI.sel[tk.id]?'☑ Unir':'☐ Unir')+'</button>';
+  if(tk) h+='<button class="btn ghost sm" style="color:#c0392b;border-color:#c0392b" data-act="eliminarcargue" data-id="'+esc(tk.id)+'">'+(e==="fin"?"Quitar":"Eliminar cargue")+'</button>';
+  return h+'</div></div>';
+}
+ACT.dsest=function(el,d){ DS.est=d("e"); render(); };
+ACT.dsdatos=function(){ DS.datos=!DS.datos; render(); };
+ACT.dsconc=function(){ DS.conc=!DS.conc; render(); };
+ACT.dsseltodos=function(){ var cal=planillasCalc(); dsFiltrar(cal).forEach(function(c){ if(dsListos(c)) SELP[c.pl.num]=1; }); render(); };
+ACT.pubuno=async function(el,d){
+  var cal=planillasCalc().filter(function(c){ return c.pl.num===d("n"); }); if(!cal.length) return;
+  if(!confirmarSep(cal)) return;
+  try{ var n=await publicarPl(cal[0],""); toast(n?"Vehículo "+cal[0].pl.placa+" publicado: disponible para los auxiliares":"No se pudo publicar este vehículo"); await cargarDesp(); render(); }catch(e){ toast("No se pudo publicar: "+(e.message||e)); }
+};
+VIEWS.desp=function(){
+  topbar("Despacho",subtituloUsuario(),true);
+  var D=S.desp, co=coActual(), propias=D.planillas.filter(function(p){ return !p.co||p.co===co; }), mi=Object.keys(S.mae).length;
+  var h=selectorCiudad("dpco")+'<div class="row" style="margin:4px 0 8px"><h1 class="grow" style="margin:0">Despacho</h1><button class="btn gold sm" data-act="cargapla">+ Cargar planilla</button><button class="btn ghost sm" data-act="dsdatos">Datos '+(DS.datos?'▴':'▾')+'</button></div>';
+  if(DS.datos) h+='<div class="card"><div class="row"><span class="chip ok">'+propias.length+' planillas</span><span class="chip ok">'+nf(Object.keys(D.lineas).length)+' documentos con líneas</span></div><p class="small muted">Las líneas se toman solas de las sesiones de alistamiento. Carga un Excel de factura o remisión solo si falta alguno.</p>'+
+    '<div class="row" style="flex-wrap:wrap"><button class="btn ghost sm" data-act="traerdocs">Traer de las sesiones</button><button class="btn ghost sm" data-act="cargafac">Cargar un Excel (si falta alguno)</button><button class="btn ghost sm" data-act="irrepdesp">Reporte de despacho</button><button class="btn red sm" data-act="borrardesp">Borrar planillas cargadas</button></div></div>';
+  if(!mi) h+='<div class="hint warn">Sin maestro: el peso y volumen no se calcularán.</div>';
+  h+=cierreHtml();
+  var cal=planillasCalc(), tareasEmp={};
+  cal.forEach(function(c){ var t=tareaDePlanilla(c.pl); if(t) tareasEmp[t.id]=1; });
+  var huer=Object.keys(DP.tareas).map(function(k){ return DP.tareas[k]; }).filter(function(t){ return t.datos.modulo==="despacho"&&!tareasEmp[t.id]; });
+  if(!cal.length&&!huer.length){
+    h+='<div class="card gold" style="text-align:center"><b>Empieza cargando la planilla del ERP</b><p class="small muted">Verás cada vehículo como una tarjeta: capacidad, alertas del alistamiento y estado del cargue. Desde ahí lo publicas a los auxiliares.</p><button class="btn gold" data-act="cargapla">Cargar planilla (Excel)</button></div>';
+    app(h); return;
+  }
+  /* contadores */
+  var n={todos:cal.length,pub:0,libre:0,curso:0,fin:0,alert:0}; cal.forEach(function(c){ n[dsEstado(c)]++; if(dsAlertas(c).length) n.alert++; });
+  var chips=[["todos","Todos"],["pub","Por publicar"],["libre","Sin tomar"],["curso","En carga"],["fin","Terminados"],["alert","⚠ Alertas"]];
+  h+='<div class="kfil">'+chips.map(function(x){ return '<button class="kf '+(DS.est===x[0]?'sel':'')+(x[0]==="alert"&&n.alert?' hot':'')+'" data-act="dsest" data-e="'+x[0]+'"><b>'+n[x[0]]+'</b><span>'+x[1]+'</span></button>'; }).join("")+'</div>';
+  var fechas=uniq(cal.map(function(c){ return c.pl.fecha; })).sort();
+  h+='<div class="row" style="margin:8px 0"><input type="search" id="dsq" class="grow" placeholder="Buscar placa, conductor, planilla o factura" value="'+esc(DS.q)+'">'+(fechas.length>1?'<select id="dsf" class="compact"><option value="">Todas las fechas</option>'+fechas.map(function(f){ return '<option value="'+f+'"'+(DF.fecha===f?' selected':'')+'>'+f.slice(5)+'</option>'; }).join("")+'</select>':'')+'</div>';
+  /* conciliacion resumida */
+  var cc=conciliar(), nAl=cc?cc.sinPlanilla.length+cc.sinAlistar.length+(cc.dif.length?1:0):0, rv=candidatosReenvio().length;
+  if(cc){ h+='<div class="hint '+((nAl||rv)?'warn':'')+'" style="margin:0 0 8px;'+((nAl||rv)?'':'border-color:#2e7d32')+'"><div class="row"><span class="grow">'+((nAl||rv)?'<b>Revisión del alistamiento:</b> '+(cc.sinAlistar.length?cc.sinAlistar.length+' sin separar · ':'')+(cc.sinPlanilla.length?cc.sinPlanilla.length+' separados sin planilla · ':'')+(cc.dif.length?'cantidades distintas · ':'')+(rv?rv+' por volver a enviar':''):'<b>Conciliación al día:</b> lo separado coincide con las planillas.')+'</span>'+((nAl||rv)?'<button class="btn ghost sm" data-act="dsconc">'+(DS.conc?'Ocultar':'Ver detalle')+'</button>':'')+'</div></div>'; if(DS.conc&&(nAl||rv)) h+=reenvioHtml()+conciliacionBase(); }
+  /* tarjetas */
+  var vis=dsFiltrar(cal), orden={pub:0,libre:1,curso:2,fin:3};
+  var libres=cal.filter(function(c){ return dsEstado(c)==="libre"; }).length;
+  var lista=vis.map(function(c){ return {c:c,i:cal.indexOf(c)}; }).sort(function(a,b){ return (orden[dsEstado(a.c)]-orden[dsEstado(b.c)])||String(a.c.pl.placa).localeCompare(String(b.c.pl.placa)); });
+  var selVis=vis.filter(dsListos).length;
+  h+='<div class="row" style="margin:6px 0"><b class="grow">'+vis.length+' vehículo'+(vis.length===1?'':'s')+'</b>'+(selVis?'<button class="btn ghost sm" data-act="dsseltodos">☑ Elegir los '+selVis+' por publicar</button>':'')+'</div>';
+  if(UNI&&nSelUni()) h+=unirBarraHtml();
+  h+=lista.map(function(x){ return dsTarjeta(x.c,x.i,libres); }).join("")||'<div class="empty">Ningún vehículo con este filtro.</div>';
+  /* cargues sin planilla en este dispositivo */
+  if(huer.length&&(DS.est==="todos"||DS.est==="curso"||DS.est==="fin")) h+='<h2>Otros cargues publicados ('+huer.length+')</h2><p class="small muted">Publicados desde otro dispositivo o de días anteriores: ya no tienen su planilla cargada aquí.</p>'+huer.map(function(t){ var d=t.datos, hh=(d.ok||0)+(d.parc||0)+(d.no||0); return '<div class="vh '+(d.estado==="completada"?"fin":d.asignadoId?"curso":"libre")+'"><div class="vt"><div class="grow"><b>'+esc(d.titulo)+'</b></div>'+estadoChip(d.estado||"pendiente")+'</div><div class="vs">'+esc(d.fecha||"")+' · '+esc(d.asignadoNombre||"Sin asignar")+' · '+hh+'/'+(d.total||0)+'</div><div class="vb"><button class="btn ghost sm" style="color:#c0392b;border-color:#c0392b" data-act="eliminarcargue" data-id="'+esc(t.id)+'">Eliminar</button></div></div>'; }).join("");
+  /* barra fija de publicacion */
+  var nsel=cal.filter(function(c){ return SELP[c.pl.num]&&dsListos(c); }).length;
+  if(nsel){ var ops=usuariosDe(co,"operario"); h+='<div class="selbar"><b>'+nsel+' elegido'+(nsel>1?'s':'')+'</b><select id="selsel" class="grow"><option value="">Disponible para cualquier auxiliar</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">Asignar a '+esc(u.nombre)+'</option>'; }).join("")+'</select><button class="btn gold sm" data-act="enviarsel">Publicar '+nsel+'</button><button class="btn ghost sm" data-act="selplnada">✕</button></div>'; }
+  app(h);
+  enlazarBuscador("dsq",function(v){ DS.q=v; });
+  var sf=$("#dsf"); if(sf) sf.onchange=function(){ DF.fecha=sf.value; render(); };
+};
+
 /* ===== 70_admin_panel.js ===== */
 /* ---------- Administracion: mismo estilo que la matriz (panel de acciones a la izquierda, lista a la derecha) y todo se puede eliminar: uno por uno o los de la lista de una vez ---------- */
 function layoutAdmin(cab,side,main){
@@ -3037,6 +3366,7 @@ function alEntrar(v){
     else if(v==="usuarios"){ cargarUsuarios().then(function(){ var c=cur(); if(c&&c.v==="usuarios") render(); }).catch(function(){}); cargarClaves(); }
     else if(v==="vehiculos") cargarVeh();
     else if(v==="enrut") cargarEnr();
+    else if(v==="recibos") cargarRecibos();
     else if(v==="rutas") Promise.all([cargarBase(false),cargarCiuCo()]).then(function(){ var c=cur(); if(c&&c.v==="rutas") render(); }).catch(function(){});
     else if(v==="ofertas"||v==="maestro") cargarBase(false).then(function(){ var c=cur(); if(c&&c.v===v) render(); }).catch(function(){});
   }catch(e){}
@@ -3054,6 +3384,8 @@ setInterval(function(){
     else if(c.v==="ses") cargarSes();
     else if(c.v==="ali") cargarAli();
     else if(c.v==="desp"||c.v==="placa") cargarDesp();
+    else if(c.v==="recibos") cargarRecibos();
+    else if(c.v==="recibo") rcRefrescar();
   }catch(e){}
 },15000);
 async function arrancar(){
