@@ -1960,12 +1960,18 @@ async function crearSesiones(todas,detalle,omit,err){
     for(var i=0;i<cos.length;i++){
       var co=cos[i], cn=(ciudadPorCo(co)||{nombre:co}).nombre;
       NUEVA.msg="Creando la sesión de "+cn+"…"; render();
+      /* documentos que ya estan en otra sesion: se ofrece omitirlos para no duplicar el trabajo */
+      try{ var yaE=await DB.list("ops_docs",{filter:{"datos->>co":"eq."+co},all:true,select:"id"}), setE={}, dd={}, dup={}; yaE.forEach(function(r){ setE[r.id]=1; }); porCo[co].forEach(function(l){ if(!l.doc) return; var k=String(l.doc).replace(/\s+/g,""); dd[k]=1; if(setE[k]) dup[k]=1; }); var nd=Object.keys(dup).length;
+        if(nd&&confirm(nd+" de "+Object.keys(dd).length+" documentos de "+cn+" ya están en otra sesión de alistamiento.\n\nAceptar: omitir los repetidos y crear la sesión solo con los nuevos.\nCancelar: crearla completa igual (el trabajo se duplicaría).")){ porCo[co]=porCo[co].filter(function(l){ return !l.doc||!dup[String(l.doc).replace(/\s+/g,"")]; }); omit+=nd; }
+      }catch(e){}
+      if(!porCo[co].length) continue;
       await cargarBase(false,co).catch(function(){});
       await registrarCiudades(porCo[co],co).catch(function(){});
       await registrarOfertas(porCo[co],"listado",co).catch(function(){ return 0; });
       var r=await crearSesionDe(armarSesion(porCo[co],co,mismosProductos(porCo[co])),detalle);
       creadas.push(r);
     }
+    if(!creadas.length){ NUEVA={}; toast("Todos los documentos ya estaban en una sesión de alistamiento: no se creó nada",5500); render(); return; }
     var ofn=creadas.reduce(function(s,x){ return s+(x.reg&&x.reg.matriz||0); },0), pm=creadas.reduce(function(s,x){ return s+(x.reg&&x.reg.maestro||0); },0);
     if(esAdmin()){ S.coSel=creadas[0].co; LS.setRaw("ops_cosel",S.coSel); S.matriz={}; }
     NUEVA={};
