@@ -389,6 +389,7 @@ var DB={
   },
   patch:function(col,id,cambios){ return api("POST","rpc/actualizar_documento",{p_coleccion:col,p_id:id,p_cambios:cambios}); },
   del:function(col,id){ return api("DELETE","documentos?coleccion=eq."+enc(col)+"&id=eq."+enc(id)); },
+  delStrict:function(col,id){ return api("DELETE","documentos?coleccion=eq."+enc(col)+"&id=eq."+enc(id),null,{"Prefer":"return=representation"}).then(function(r){ if(Array.isArray(r)&&r.length===0) throw new Error("la base no eliminó nada: no hay permiso de borrado o el registro ya no existe"); return r; }); },
   delFilter:function(col,filter){ var q="documentos?coleccion=eq."+enc(col); Object.keys(filter).forEach(function(k){ q+="&"+enc(k)+"="+enc(filter[k]); }); return api("DELETE",q); },
   rpc:function(nombre,args){ return api("POST","rpc/"+nombre,args); }
 };
@@ -2358,8 +2359,8 @@ ACT.unirsel=async function(){
 ACT.eliminarcargue=async function(el,d){
   var id=d("id"); if(!id) return;
   if(!confirm("¿Eliminar este cargue? Desaparece para los auxiliares y se pierde su avance. La planilla podrás publicarla de nuevo.")) return;
-  try{ await DB.del("ops_tareas",id); toast("Cargue eliminado"); var c=cur(); if(c&&c.v==="trab"){ W=null; back(); } else if(c&&c.v==="placa"){ back(); } await cargarDesp(); render(); }
-  catch(e){ toast("No se pudo eliminar: "+(e.message||e)); }
+  try{ await DB.delStrict("ops_tareas",id); toast("Cargue eliminado"); var c=cur(); if(c&&c.v==="trab"){ W=null; back(); } else if(c&&c.v==="placa"){ back(); } await cargarDesp(); render(); }
+  catch(e){ toast("No se pudo eliminar: "+(e.message||e),8000); }
 };
 
 /* ===== 62_despacho2.js ===== */
@@ -2588,8 +2589,8 @@ ACT.eliminartodoscargues=async function(){
   var ts=Object.keys(DP.tareas).map(function(k){ return DP.tareas[k]; }).filter(function(t){ return t.datos.modulo==="despacho"&&t.datos.asignadoId; });
   if(!ts.length) return;
   if(!confirm("¿Eliminar los "+ts.length+" cargues publicados de tu ciudad? Desaparecen para los auxiliares y se pierde su avance. No se puede deshacer.")) return;
-  try{ for(var i=0;i<ts.length;i++) await DB.del("ops_tareas",ts[i].id); toast(ts.length+" cargues eliminados"); await cargarDesp(); render(); }
-  catch(e){ toast("No se pudo eliminar: "+(e.message||e)); }
+  try{ for(var i=0;i<ts.length;i++) await DB.delStrict("ops_tareas",ts[i].id); toast(ts.length+" cargues eliminados"); await cargarDesp(); render(); }
+  catch(e){ toast("No se pudo eliminar: "+(e.message||e),8000); }
 };
 
 /* ===== Volver a enviar: documentos de alistamientos de dias anteriores o ya despachados antes ===== */
