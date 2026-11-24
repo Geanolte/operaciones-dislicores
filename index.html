@@ -853,6 +853,7 @@ VIEWS.home=function(){
   h2='<div class="hc">'+h2+'<div class="tg">'+'<button class="tile" data-act="ir" data-v="tablero"><div class="ic">◔</div><div><b>Avance de tareas</b><span>Quién está haciendo qué, en alistamiento, despacho y semáforos</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="ali"><div class="ic">▦</div><div><b>Alistamiento</b><span>Cargar facturas, pedidos, requisiciones o remisiones y asignar</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="desp"><div class="ic">⛟</div><div><b>Despacho</b><span>Planilla por vehículo, segundo alistamiento y uso de capacidad</span></div></button>'+
+    (puedeEnrutar()?'<button class="tile" data-act="ir" data-v="enrut"><div class="ic">⇄</div><div><b>Enrutador</b><span>Asignar los documentos separados a cada vehículo y carga antes de despachar (piloto)</span></div></button>':'')+
     '<button class="tile" data-act="irrepdesp"><div class="ic">▤</div><div><b>Reporte de despacho</b><span>Consolidado por referencia, vehículo, documento o cliente, con descarga a Excel</span></div></button>'+
     '<button class="tile" data-act="irsem"><div class="ic">◐</div><div><b>Semáforos de vencimiento</b><span>Se abre con tu mismo usuario, sin volver a ingresar</span></div></button>'+
     '</div>'+pendientesHtml()+configEscaneoHtml()+
@@ -1716,13 +1717,14 @@ function hojaEditarUsuario(u){
   var bg=abrirSheet('<h3>Editar usuario</h3><label class="lb">Nombre completo</label><input id="euNom" type="text" value="'+esc(u.nombre)+'"><label class="lb">Cargo</label><input id="euCar" type="text" value="'+esc(u.cargo||"")+'">'+
     '<label class="lb">Ciudad</label><select id="euCo">'+CIUDADES.map(function(c){ return '<option value="'+c.co+'"'+(u.co===c.co?" selected":"")+'>'+c.nombre+'</option>'; }).join("")+'<option value="REG"'+(u.co==="REG"?" selected":"")+'>'+esc(REGIONAL.nombre)+' (regional)</option></select>'+
     '<label class="lb">Rol</label><select id="euRol"><option value="operario"'+(u.rol==="operario"?" selected":"")+'>Auxiliar de bodega</option><option value="coordinador"'+(u.rol==="coordinador"?" selected":"")+'>Coordinador / Supervisor</option><option value="administrador"'+(u.rol==="administrador"?" selected":"")+'>Administrador</option></select>'+
+    '<label class="lb">Enrutador (piloto)</label><select id="euEnr"><option value="no"'+(u.enrutador?"":" selected")+'>Sin acceso</option><option value="si"'+(u.enrutador?" selected":"")+'>Puede usar el Enrutador</option></select><p class="small muted">Solo aplica a coordinadores y supervisores. Los administradores siempre lo tienen.</p>'+
     '<p class="small muted">Cambiar el nombre no cambia su identificación ni su clave.</p><div class="sp"></div><button class="btn gold block" id="euOk">Guardar</button><div class="sp"></div><button class="btn ghost block" id="euX">Cancelar</button>');
   $("#euX",bg).onclick=cerrarSheet;
   $("#euOk",bg).onclick=async function(){
     var nom=($("#euNom",bg).value||"").trim(), co=$("#euCo",bg).value, rol=$("#euRol",bg).value; if(!nom){ toast("Escribe el nombre"); return; }
     if(u.id===S.me.id&&rol!==u.rol){ toast("No puedes cambiar tu propio rol"); return; }
     var c=ciudadPorCo(co);
-    try{ await DB.patch("usuarios",u.id,{nombre:nom,cargo:($("#euCar",bg).value||"").trim(),co:co,ciudad:c?c.nombre:REGIONAL.nombre,rol:rol,actualizadoEn:ahora()}); await cargarUsuarios(); cerrarSheet(); toast("Usuario actualizado"); render(); }
+    try{ await DB.patch("usuarios",u.id,{nombre:nom,cargo:($("#euCar",bg).value||"").trim(),co:co,ciudad:c?c.nombre:REGIONAL.nombre,rol:rol,enrutador:($("#euEnr",bg).value==="si"),actualizadoEn:ahora()}); await cargarUsuarios(); cerrarSheet(); toast("Usuario actualizado"); render(); }
     catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
   };
 }
@@ -1938,7 +1940,7 @@ async function crearSesiones(todas,detalle,omit,err){
 function armarSesion(raw,co,iguales){
   var lineas=raw.filter(function(l){ return !(iguales&&l.t==="REQ"); }), des=desglosar(lineas,co), dd={}; lineas.forEach(function(l){ if(l.doc) dd[l.doc]=1; });
   var items=consolidar(des.lineas), g={}, ciu={}, dl={};
-  lineas.forEach(function(l){ if(!l.doc) return; var k=String(l.doc).replace(/\s+/g,""), x=dl[k]=dl[k]||{t:l.t||"",cli:"",l:[]}; if(!x.cli&&l.cli) x.cli=l.cli; x.l.push([l.ref,l.desc,l.bar,l.ue,l.cant]); });
+  lineas.forEach(function(l){ if(!l.doc) return; var k=String(l.doc).replace(/\s+/g,""), x=dl[k]=dl[k]||{t:l.t||"",cli:"",ciu:"",l:[]}; if(!x.cli&&l.cli) x.cli=l.cli; if(!x.ciu&&l.ciu) x.ciu=l.ciu; x.l.push([l.ref,l.desc,l.bar,l.ue,l.cant]); });
   lineas.forEach(function(l){ var k=l.ciu||"SIN CIUDAD"; (g[k]=g[k]||[]).push(l); });
   Object.keys(g).forEach(function(k){ ciu[k]=consolidar(desglosar(g[k],co).lineas).map(function(x){ return [x.ref,x.total]; }); });
   return {co:co,des:des,items:items,docs:Object.keys(dd).length,unid:items.reduce(function(s,x){ return s+x.total; },0),ciu:ciu,dl:dl,bod:(lineas.filter(function(l){ return l.bod; })[0]||{}).bod||""};
@@ -1963,7 +1965,7 @@ async function crearSesionDe(N,detalle){
   await DB.set("ops_sesiones",sid,{modulo:"alistamiento",co:co,ciudad:ciudad,titulo:titulo,fecha:hoy(),creadoPor:S.me.nombre,creadoPorId:S.me.id,creadoEn:ahora(),totalRefs:N.items.length,totalUnidades:N.unid,docs:N.docs,bod:N.bod,ciu:N.ciu,archivos:detalle.map(function(a){ return {n:a.n,t:a.t,l:a.l}; })});
   await DB.setMany("ops_tareas",docs);
   /* lineas por documento: Despacho las toma de aqui, sin volver a cargar los archivos */
-  try{ var dk=Object.keys(N.dl||{}); if(dk.length) await DB.setMany("ops_docs",dk.map(function(k){ return {id:k,datos:{co:co,sid:sid,t:N.dl[k].t,cli:N.dl[k].cli,l:N.dl[k].l}}; })); }catch(e){}
+  try{ var dk=Object.keys(N.dl||{}); if(dk.length) await DB.setMany("ops_docs",dk.map(function(k){ return {id:k,datos:{co:co,sid:sid,t:N.dl[k].t,cli:N.dl[k].cli,ciu:N.dl[k].ciu||"",l:N.dl[k].l}}; })); }catch(e){}
   
   return {sid:sid,co:co,docs:docs.length,reg:reg};
 }
@@ -2549,6 +2551,161 @@ function reenvioHtml(){
   return h;
 }
 
+/* ===== 63_enrutador.js ===== */
+/* ---------- Enrutador: paso entre el alistamiento y el despacho. El coordinador filtra los documentos separados y los asigna a un vehiculo y una carga ---------- */
+/* Piloto: lo ven los administradores y los coordinadores/supervisores a quienes el administrador les active «Enrutador» en Usuarios. */
+function puedeEnrutar(){ return !!S.me&&(S.me.rol==="administrador"||(S.me.rol==="coordinador"&&S.me.enrutador===true)); }
+var ER={docs:{},rutas:[],cargando:false,err:"",sel:{},q:"",ciu:"",cor:"",ses:"",est:"",m:{},aux:""};
+function fechaDeSid(sid){ var m=/^S(\d{2})(\d{2})(\d{2})-/.exec(String(sid||"")); return m?("20"+m[1]+"-"+m[2]+"-"+m[3]):""; }
+async function cargarEnr(){
+  if(!puedeEnrutar()) return;
+  var co=coActual(); ER.cargando=true; ER.err="";
+  try{
+    await Promise.all([cargarBase(false,co).catch(function(){}),cargarCiuCo().catch(function(){}),cargarVeh()]);
+    var ds=await DB.list("ops_docs",{filter:{"datos->>co":"eq."+co},all:true});
+    ER.docs={}; ds.forEach(function(r){ ER.docs[r.id]=r.datos||{}; }); CON.docs=ER.docs; ER.m={};
+    var rs=await DB.list("ops_rutas",{filter:{"datos->>co":"eq."+co},all:true});
+    ER.rutas=rs.map(function(r){ return {id:r.id,d:r.datos||{}}; }).sort(function(a,b){ return String(b.d.fecha).localeCompare(String(a.d.fecha))||String(a.d.placa).localeCompare(String(b.d.placa)); });
+    await cargarTareasAli();
+    var ts=await tareasDe({"datos->>co":"eq."+co,"datos->>modulo":"eq.despacho"}); DP.tareas={}; ts.forEach(function(t){ DP.tareas[t.datos.sid]=t; });
+  }catch(e){ ER.err=e.message||"Sin conexión"; }
+  ER.cargando=false; var c=cur(); if(c&&c.v==="enrut"&&!$(".sheet-bg")) render();
+}
+/* peso, volumen, cajas y unidades de un documento (con las ofertas desglosadas) */
+function docMedidas(id){
+  if(ER.m[id]) return ER.m[id];
+  var d=ER.docs[id]||{}, co=coActual();
+  var ls=(d.l||[]).map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],cant:a[4],bod:"",grupo:"",linea:"",doc:id,t:d.t||"FAC"}; }), dd=desglosar(ls,co), mp={};
+  dd.lineas.forEach(function(l){ var m=S.mae[l.ref]||{}, it=mp[l.ref]; if(!it) it=mp[l.ref]={ref:l.ref,ue:l.ue>0?l.ue:(m.u||1),total:0}; it.total+=l.cant; });
+  var c=carga(Object.keys(mp).map(function(k){ return mp[k]; }));
+  return (ER.m[id]={kg:c.kg,m3:c.m3,und:c.und,cj:c.cj,sinPeso:c.sin.length});
+}
+function sumaDocs(ids){ var t={kg:0,m3:0,und:0,cj:0}; ids.forEach(function(i){ var m=docMedidas(i); t.kg+=m.kg; t.m3+=m.m3; t.und+=m.und; t.cj+=m.cj; }); return t; }
+function docEnRuta(id){ for(var i=0;i<ER.rutas.length;i++){ if((ER.rutas[i].d.docs||[]).indexOf(id)>=0) return ER.rutas[i]; } return null; }
+/* un documento esta alistado cuando todas las tareas de su sesion estan completas */
+function docAlistado(id){
+  var d=ER.docs[id]; if(!d||!d.sid||!CON.tareas) return null;
+  var ts=CON.tareas.filter(function(t){ return t.d.sid===d.sid; }); if(!ts.length) return null;
+  return ts.every(function(t){ return t.d.estado==="completada"; });
+}
+function medidorHtml(t,placa){
+  var cap=S.cap[placa]||{}, h='';
+  var fila=function(lbl,v,c,u,dec){ if(!(c>0)) return '<div class="small">'+lbl+': <b>'+nf(v,dec)+' '+u+'</b></div>'; var p=v/c; return '<div class="small">'+lbl+': <b>'+nf(v,dec)+' '+u+'</b> de '+nf(c,dec)+' '+u+' ('+pct(p)+')'+(p>1?' <b style="color:#c0392b">· excede la capacidad</b>':'')+'</div><div class="bar'+(p>1?' w':'')+'" style="margin:3px 0 6px"><i style="width:'+Math.min(100,Math.round(p*100))+'%"></i></div>'; };
+  h+=fila("Peso",t.kg,cap.kg,"kg",0)+fila("Volumen",t.m3,cap.m3,"m³",1);
+  if(!(cap.kg>0)&&!(cap.m3>0)) h+='<div class="small muted">Esta placa no tiene capacidad registrada (Administración → Vehículos).</div>';
+  return h;
+}
+function filtrosEnr(){
+  var q=normH(ER.q);
+  return Object.keys(ER.docs).filter(function(id){
+    if(docEnRuta(id)) return false; var d=ER.docs[id];
+    if(ER.ciu&&(d.ciu||"SIN CIUDAD")!==ER.ciu) return false;
+    if(ER.cor&&rutaDe(d.ciu||"")!==ER.cor) return false;
+    if(ER.ses&&d.sid!==ER.ses) return false;
+    if(ER.est==="alist"&&docAlistado(id)!==true) return false;
+    if(ER.est==="pend"&&docAlistado(id)===true) return false;
+    return !q||normH(id+" "+(d.cli||"")+" "+(d.ciu||"")).indexOf(q)>=0;
+  }).sort(function(a,b){ return String(ER.docs[a].ciu||"~").localeCompare(String(ER.docs[b].ciu||"~"))||a.localeCompare(b); });
+}
+VIEWS.enrut=function(){
+  topbar("Enrutador",subtituloUsuario(),true);
+  if(!puedeEnrutar()){ app('<div class="empty">El Enrutador está en piloto y aún no está habilitado para tu usuario.</div>'); return; }
+  var h=selectorCiudad("erco")+'<h1>Enrutador</h1><div class="hint">Paso entre el alistamiento y el despacho: filtra los documentos separados (por ciudad, ruta, número de factura…), asígnalos a un <b>vehículo y una carga</b> y publica el cargue. Un documento va completo en un solo vehículo. Para sacar un documento del consolidado, márcalo «Aparte».</div>';
+  if(ER.err) h+='<div class="hint warn">'+esc(ER.err)+'</div>';
+  if(ER.cargando&&!Object.keys(ER.docs).length) h+='<div class="empty">Cargando documentos…</div>';
+  /* --- vehiculos y cargas armadas --- */
+  var abiertas=ER.rutas.filter(function(r){ return r.d.estado!=="publicada"; }), pub=ER.rutas.filter(function(r){ return r.d.estado==="publicada"; });
+  h+='<h2>Vehículos y cargas ('+abiertas.length+' por publicar)</h2>';
+  if(!ER.rutas.length) h+='<div class="empty">Aún no hay vehículos enrutados. Elige documentos abajo y asígnalos a una placa.</div>';
+  if(abiertas.length){
+    var ops=usuariosDe(coActual(),"operario");
+    h+='<div class="row" style="margin-bottom:6px"><select id="eraux" class="grow"><option value="">Publicar disponible para cualquier auxiliar</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'"'+(ER.aux===u.id?' selected':'')+'>Publicar asignado a '+esc(u.nombre)+'</option>'; }).join("")+'</select></div>';
+  }
+  abiertas.concat(pub).forEach(function(r){ var d=r.d, ids=d.docs||[], t=sumaDocs(ids), vv=S.veh[d.placa]||{}, pb=d.estado==="publicada";
+    h+='<div class="card'+(pb?'':' gold')+'"><div class="row"><b class="grow mono">'+esc(d.placa)+' · carga '+esc(d.carga)+'</b><span class="chip info">'+esc(String(d.fecha).slice(5))+'</span>'+(pb?'<span class="chip st-ok">Publicado</span>':'<span class="chip st-nov">Por publicar</span>')+'</div>'+
+      '<div class="small muted">'+esc(vv.conductor||"sin conductor registrado")+' · '+ids.length+' documentos · '+nf(t.cj)+' cajas · '+nf(t.und)+' u.</div>'+medidorHtml(t,d.placa)+
+      ids.map(function(i){ var x=ER.docs[i]||{}, ap=(d.aparte||{})[i]; return '<div class="row small" style="margin-top:4px;align-items:center"><span class="grow"><b class="mono">'+esc(i)+'</b> <span class="muted">'+esc(x.cli||"")+(x.ciu?' · '+esc(x.ciu):'')+'</span>'+(ap?' <span class="chip warn">Aparte</span>':'')+'</span>'+(pb?'':'<button class="btn ghost sm" data-act="erparte" data-r="'+esc(r.id)+'" data-d="'+esc(i)+'">'+(ap?'En consolidado':'Aparte')+'</button><button class="btn ghost sm" data-act="erquitar" data-r="'+esc(r.id)+'" data-d="'+esc(i)+'">Quitar</button>')+'</span></div>'; }).join("")+
+      (pb?'':'<div class="sp"></div><div class="row"><button class="btn gold grow" data-act="erpub" data-r="'+esc(r.id)+'">Publicar cargue</button><button class="btn ghost" style="color:#c0392b;border-color:#c0392b" data-act="erdel" data-r="'+esc(r.id)+'">Eliminar</button></div>')+
+      (pb&&d.planillas?'<div class="small muted" style="margin-top:6px">Cargues: '+esc(d.planillas.join(" · "))+'</div>':'')+'</div>'; });
+  /* --- documentos por enrutar --- */
+  var todos=Object.keys(ER.docs).filter(function(i){ return !docEnRuta(i); }), vis=filtrosEnr();
+  var ciudades=uniq(todos.map(function(i){ return ER.docs[i].ciu||"SIN CIUDAD"; })).sort(), cors=uniq(todos.map(function(i){ return rutaDe(ER.docs[i].ciu||""); })).sort(), sess=uniq(todos.map(function(i){ return ER.docs[i].sid; }).filter(Boolean)).sort().reverse();
+  h+='<h2>Documentos por enrutar ('+nf(todos.length)+')</h2>';
+  var opt=function(lista,sel,todo,fmt){ return '<option value="">'+todo+'</option>'+lista.map(function(x){ return '<option value="'+esc(x)+'"'+(sel===x?' selected':'')+'>'+esc(fmt?fmt(x):x)+'</option>'; }).join(""); };
+  h+='<input type="search" id="erq" placeholder="Buscar número de factura, cliente o ciudad" value="'+esc(ER.q)+'">'+
+    '<div class="row" style="margin-top:8px"><div class="grow"><label class="lb">Ciudad</label><select id="erciu">'+opt(ciudades,ER.ciu,"Todas")+'</select></div><div class="grow"><label class="lb">Ruta</label><select id="ercor">'+opt(cors,ER.cor,"Todas")+'</select></div></div>'+
+    '<div class="row" style="margin-top:6px"><div class="grow"><label class="lb">Sesión de alistamiento</label><select id="erses">'+opt(sess,ER.ses,"Todas",function(s){ return (fechaDeSid(s)||s).slice(5)+" · "+s; })+'</select></div><div class="grow"><label class="lb">Estado</label><select id="erest"><option value="">Todos</option><option value="alist"'+(ER.est==="alist"?' selected':'')+'>Ya alistados</option><option value="pend"'+(ER.est==="pend"?' selected':'')+'>Alistamiento sin terminar</option></select></div></div>';
+  var nsel=Object.keys(ER.sel).filter(function(i){ return ER.docs[i]&&!docEnRuta(i); }), ts=sumaDocs(nsel);
+  if(nsel.length){
+    var placas=S.vehList.map(function(v){ return v.d.placa; }).filter(Boolean).sort();
+    h+='<div class="card gold" style="margin-top:8px"><b>Asignar '+nsel.length+' documento'+(nsel.length>1?'s':'')+'</b><div class="small muted">'+nf(ts.cj)+' cajas · '+nf(ts.und)+' u. · '+nf(ts.kg)+' kg · '+nf(ts.m3,1)+' m³</div>'+
+      '<div class="row" style="margin-top:6px"><div class="grow"><label class="lb">Vehículo (placa)</label><select id="erpl"><option value="">— Elegir —</option>'+placas.map(function(p){ var vv=S.veh[p]||{}; return '<option value="'+esc(p)+'"'+(ER.placa===p?' selected':'')+'>'+esc(p)+(vv.conductor?' · '+esc(vv.conductor):'')+(vv.kg?' · '+nf(vv.kg)+' kg':'')+'</option>'; }).join("")+'</select></div><div style="width:84px"><label class="lb">Carga</label><input id="erca" type="number" min="1" value="'+esc(ER.carga||1)+'"></div></div>'+
+      '<p class="small muted">¿Otra placa (esporádico)? Agrégala primero en Administración → Vehículos.</p><button class="btn gold block" data-act="erasignar">Asignar a este vehículo</button></div>';
+  }
+  h+='<div class="row" style="margin-top:8px"><button class="btn ghost sm" data-act="ersela">☑ Elegir los '+vis.length+' de la vista</button>'+(Object.keys(ER.sel).length?'<button class="btn ghost sm" data-act="ernada">Quitar selección</button>':'')+'</div>';
+  h+=vis.slice(0,250).map(function(i){ var d=ER.docs[i], m=docMedidas(i), al=docAlistado(i), on=!!ER.sel[i];
+    return '<button class="task" data-act="ersel" data-d="'+esc(i)+'"><div class="tt"><b class="mono">'+(on?'☑ ':'☐ ')+esc(i)+'</b>'+(al===true?'<span class="chip st-ok">Alistado</span>':al===false?'<span class="chip st-nov">En alistamiento</span>':'<span class="chip info">Sin estado</span>')+'</div><div class="sub">'+esc(d.cli||"(sin cliente)")+'</div><div class="mini"><span class="chip info">'+esc(d.ciu||"Sin ciudad")+'</span><span class="chip info">'+esc(rutaDe(d.ciu||""))+'</span><span class="chip">'+nf(m.cj)+' cajas</span><span class="chip">'+nf(m.kg)+' kg</span></div></button>'; }).join("");
+  if(vis.length>250) h+='<p class="small muted">Se muestran 250 de '+nf(vis.length)+': afina el filtro.</p>';
+  if(!vis.length) h+='<div class="empty">'+(todos.length?'Ningún documento con este filtro.':'No hay documentos sin enrutar. Se cargan al crear una sesión de alistamiento.')+'</div>';
+  if(Object.keys(ER.docs).some(function(i){ return !ER.docs[i].ciu; })) h+='<p class="small muted">Los documentos de sesiones creadas antes de esta versión no traen ciudad: aparecen como «Sin ciudad».</p>';
+  h+='<p class="small muted">La planilla del ERP se carga después en Despacho solo para comparar contra lo enrutado.</p>';
+  app(h);
+  enlazarBuscador("erq",function(v){ ER.q=v; });
+  [["erciu","ciu"],["ercor","cor"],["erses","ses"],["erest","est"]].forEach(function(p){ var s=$("#"+p[0]); if(s) s.onchange=function(){ ER[p[1]]=s.value; render(); }; });
+  var sp=$("#erpl"); if(sp) sp.onchange=function(){ ER.placa=sp.value; }; var sc=$("#erca"); if(sc) sc.onchange=function(){ ER.carga=sc.value; };
+  var sa=$("#eraux"); if(sa) sa.onchange=function(){ ER.aux=sa.value; };
+};
+ACT.erco=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); ER={docs:{},rutas:[],cargando:true,err:"",sel:{},q:"",ciu:"",cor:"",ses:"",est:"",m:{},aux:""}; S.vehList=[]; render(); cargarEnr(); };
+ACT.ersel=function(el,d){ var i=d("d"); if(ER.sel[i]) delete ER.sel[i]; else ER.sel[i]=1; render(); };
+ACT.ersela=function(){ filtrosEnr().forEach(function(i){ ER.sel[i]=1; }); render(); };
+ACT.ernada=function(){ ER.sel={}; render(); };
+function rutaId(fecha,placa,carga){ return "R"+fecha.slice(2).replace(/-/g,"")+"-"+placa+"-"+carga; }
+ACT.erasignar=async function(){
+  var placa=ER.placa||($("#erpl")||{}).value, carga=parseInt(ER.carga||($("#erca")||{}).value||1,10)||1;
+  if(!plateOk(placa)){ toast("Elige el vehículo"); return; }
+  var ids=Object.keys(ER.sel).filter(function(i){ return ER.docs[i]&&!docEnRuta(i); }); if(!ids.length){ toast("No hay documentos elegidos"); return; }
+  var co=coActual(), fecha=hoy(), id=rutaId(fecha,placa,carga), ex=ER.rutas.filter(function(r){ return r.id===id; })[0];
+  if(ex&&ex.d.estado==="publicada"){ toast("Esa carga ya está publicada: elige otro número de carga"); return; }
+  var d=ex?ex.d:{co:co,fecha:fecha,placa:placa,carga:carga,docs:[],aparte:{},estado:"abierta",creadoPor:S.me.id,creadoEn:ahora()};
+  d.docs=(d.docs||[]).concat(ids); d.actualizadoEn=ahora(); d.actualizadoPor=S.me.id;
+  try{ await DB.set("ops_rutas",id,d); if(!ex) ER.rutas.unshift({id:id,d:d}); else ex.d=d; ER.sel={}; toast(ids.length+" documentos asignados a "+placa+" · carga "+carga); render(); }
+  catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
+};
+function rutaDeId(id){ return ER.rutas.filter(function(r){ return r.id===id; })[0]; }
+ACT.erquitar=async function(el,d){
+  var r=rutaDeId(d("r")); if(!r||r.d.estado==="publicada") return; var doc=d("d");
+  r.d.docs=(r.d.docs||[]).filter(function(x){ return x!==doc; }); if(r.d.aparte) delete r.d.aparte[doc]; r.d.actualizadoEn=ahora();
+  try{ if(r.d.docs.length) await DB.set("ops_rutas",r.id,r.d); else { await DB.del("ops_rutas",r.id); ER.rutas=ER.rutas.filter(function(x){ return x!==r; }); } render(); }catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
+};
+ACT.erparte=async function(el,d){
+  var r=rutaDeId(d("r")); if(!r||r.d.estado==="publicada") return; var doc=d("d"); r.d.aparte=r.d.aparte||{}; if(r.d.aparte[doc]) delete r.d.aparte[doc]; else r.d.aparte[doc]=1; r.d.actualizadoEn=ahora();
+  try{ await DB.set("ops_rutas",r.id,r.d); render(); }catch(e){ toast("No se pudo guardar: "+(e.message||e)); }
+};
+ACT.erdel=async function(el,d){
+  var r=rutaDeId(d("r")); if(!r||r.d.estado==="publicada") return;
+  if(!confirm("¿Eliminar la carga de "+r.d.placa+"? Los documentos vuelven a la lista por enrutar.")) return;
+  try{ await DB.del("ops_rutas",r.id); ER.rutas=ER.rutas.filter(function(x){ return x!==r; }); render(); }catch(e){ toast("No se pudo eliminar: "+(e.message||e)); }
+};
+/* Publicar: cada carga se vuelve una planilla del Despacho (los documentos «aparte» salen como cargue propio) y se publica como cargue */
+ACT.erpub=async function(el,d){
+  var r=rutaDeId(d("r")); if(!r||r.d.estado==="publicada") return; var co=coActual(), rd=r.d, base="R"+rd.fecha.slice(2).replace(/-/g,"")+rd.placa+rd.carga;
+  var ap=rd.aparte||{}, normales=(rd.docs||[]).filter(function(i){ return !ap[i]; }), aparte=(rd.docs||[]).filter(function(i){ return ap[i]; }), pls=[];
+  if(normales.length) pls.push({num:base,tipo:"RUT",co:co,fecha:rd.fecha,placa:rd.placa,facs:normales,ruta:r.id});
+  aparte.forEach(function(i,k){ pls.push({num:base+"-A"+(k+1),tipo:"RUT",co:co,fecha:rd.fecha,placa:rd.placa,facs:[i],ruta:r.id,aparte:true}); });
+  if(!pls.length) return;
+  rd.docs.forEach(function(k){ if(!S.desp.lineas[k]){ var sd=ER.docs[k]||{}, ls=(sd.l||[]).map(function(a){ return {ref:a[0],desc:a[1],bar:a[2],ue:a[3],cant:a[4],bod:"",grupo:"",linea:"",doc:k,t:sd.t||"FAC"}; }), dd=desglosar(ls,co); S.desp.lineas[k]=dd.lineas.map(function(l){ return [l.ref,l.desc,l.bar,l.ue,l.cant]; }); } if((ER.docs[k]||{}).cli) S.desp.clientes[k]=ER.docs[k].cli; });
+  var nums=pls.map(function(p){ return p.num; });
+  S.desp.planillas=(S.desp.planillas||[]).filter(function(p){ return !(p.co===co&&nums.indexOf(p.num)>=0); }).concat(pls);
+  S.desp.planillas.sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:String(x.num).localeCompare(String(y.num),undefined,{numeric:true}); });
+  LS.set("ops_desp",S.desp);
+  var cal=planillasCalc().filter(function(c){ return nums.indexOf(c.pl.num)>=0; });
+  var sa=cal.filter(function(c){ return sinAlistarDe(c.pl).length; }); if(sa.length){ toast("Hay documentos sin alistamiento registrado en esta carga: no se puede publicar",5000); return; }
+  if(!confirmarSep(cal)) return;
+  try{ var n=0; for(var i=0;i<cal.length;i++) n+=await publicarPl(cal[i],ER.aux||""); rd.estado="publicada"; rd.planillas=cal.map(function(c){ return etiquetaPl(c.pl); }); rd.publicadoEn=ahora(); rd.publicadoPor=S.me.id; await DB.set("ops_rutas",r.id,rd);
+    toast(n+" cargue"+(n===1?"":"s")+" publicado"+(n===1?"":"s")+" para "+rd.placa+(ER.aux?" · asignado a "+nombreDe(ER.aux):" · disponible para los auxiliares"),5000); render(); }
+  catch(e){ toast("No se pudo publicar: "+(e.message||e)); }
+};
+
 /* ===== 65_listado.js ===== */
 /* ---------- rutas por poblacion y listado de separacion impreso (para bodegas sin RF ni matriz formal) ---------- */
 function claveCiu(c){ return normH(c).replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); }
@@ -2879,6 +3036,7 @@ function alEntrar(v){
     else if(v==="matriz") abrirMatriz();
     else if(v==="usuarios"){ cargarUsuarios().then(function(){ var c=cur(); if(c&&c.v==="usuarios") render(); }).catch(function(){}); cargarClaves(); }
     else if(v==="vehiculos") cargarVeh();
+    else if(v==="enrut") cargarEnr();
     else if(v==="rutas") Promise.all([cargarBase(false),cargarCiuCo()]).then(function(){ var c=cur(); if(c&&c.v==="rutas") render(); }).catch(function(){});
     else if(v==="ofertas"||v==="maestro") cargarBase(false).then(function(){ var c=cur(); if(c&&c.v===v) render(); }).catch(function(){});
   }catch(e){}
