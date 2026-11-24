@@ -442,6 +442,33 @@ function tareaHtml(t,acc){
     '<div class="mini"><span class="chip">'+hechas+' de '+total+'</span>'+(d.ok?'<span class="chip ok">'+d.ok+' completas</span>':'')+(d.parc?'<span class="chip warn">'+d.parc+' parciales</span>':'')+(d.no?'<span class="chip bad">'+d.no+' sin stock</span>':'')+'</div></button>';
 }
 
+/* ---- Confirmaciones propias: el navegador integrado de la app de escritorio no muestra confirm()/prompt() y los cancela solos ---- */
+(function(){
+  var nat=window.confirm?window.confirm.bind(window):null, natP=window.prompt?window.prompt.bind(window):null, CF={app:false,papp:false,ok:null,pm:null,pv:undefined,src:null};
+  document.addEventListener("click",function(e){ if(!e.target.closest||!e.target.closest(".cf-bg")) CF.src=e.target; },true);
+  function hoja(html){ var bg=document.createElement("div"); bg.className="sheet-bg cf-bg"; bg.style.zIndex=99999; bg.innerHTML='<div class="sheet">'+html+'</div>'; document.body.appendChild(bg); return bg; }
+  function reintentar(src){ if(src&&document.contains(src)){ setTimeout(function(){ src.click(); },0); return true; } return false; }
+  window.confirm=function(msg){
+    msg=String(msg);
+    if(CF.ok===msg){ CF.ok=null; return true; }
+    if(!CF.app&&nat){ var t=performance.now(), r=false; try{ r=nat(msg); }catch(x){ r=false; } if(r) return true; if(performance.now()-t>60) return false; CF.app=true; }
+    var src=CF.src, bg=hoja('<h3>Confirmar</h3><p style="white-space:pre-line">'+esc(msg)+'</p><button class="btn gold block" id="cfOk">Aceptar</button><div class="sp"></div><button class="btn ghost block" id="cfNo">Cancelar</button>');
+    bg.querySelector("#cfNo").onclick=function(){ bg.remove(); };
+    bg.querySelector("#cfOk").onclick=function(){ bg.remove(); CF.ok=msg; if(!reintentar(src)) CF.ok=null; };
+    return false;
+  };
+  window.prompt=function(msg,def){
+    msg=String(msg);
+    if(CF.pm===msg&&CF.pv!==undefined){ var v=CF.pv; CF.pv=undefined; CF.pm=null; return v; }
+    if(!CF.papp&&natP){ var t=performance.now(), r=null; try{ r=natP(msg,def); }catch(x){ r=null; } if(r!==null) return r; if(performance.now()-t>60) return null; CF.papp=true; }
+    var src=CF.src, bg=hoja('<h3>'+esc(msg).replace(/\n/g,"<br>")+'</h3><input id="cfTx" type="text" value="'+esc(def==null?"":def)+'"><div class="sp"></div><button class="btn gold block" id="cfOk">Aceptar</button><div class="sp"></div><button class="btn ghost block" id="cfNo">Cancelar</button>');
+    var inp=bg.querySelector("#cfTx"); setTimeout(function(){ try{ inp.focus(); }catch(e){} },50);
+    bg.querySelector("#cfNo").onclick=function(){ bg.remove(); };
+    bg.querySelector("#cfOk").onclick=function(){ var val=inp.value; bg.remove(); CF.pm=msg; CF.pv=val; if(!reintentar(src)) CF.pv=undefined; };
+    return null;
+  };
+})();
+
 /* ===== 20_data.js ===== */
 /* ---------- lectura de Excel ---------- */
 function leerExcel(file){
