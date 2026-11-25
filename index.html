@@ -717,8 +717,8 @@ function borrarIdentidad(){ try{ sessionStorage.removeItem(IDKEY); sessionStorag
 /* Datos de referencia compartidos: maestro, composicion de ofertas y marcas de desglose del C.O. */
 async function cargarBase(force,coPedido){
   var co=coPedido||coActual(), p=[];
-  if(force||!Object.keys(S.mae).length){
-    p.push(DB.list("maestro",{all:true}).then(function(rows){ var m={}; rows.forEach(function(r){ m[r.id]=r.datos; }); S.mae=m; LS.set("ops_mae",m); }));
+  if(force||!Object.keys(S.mae).length||Date.now()-(S.maeT||0)>600000){
+    p.push(DB.list("maestro",{all:true}).then(function(rows){ var m={}; rows.forEach(function(r){ m[r.id]=r.datos; }); S.mae=m; S.maeT=Date.now(); LS.set("ops_mae",m); }));
   }
   p.push(DB.list("ofertas",{all:true}).then(function(rows){ var o={}; rows.forEach(function(r){ if(r.datos&&r.datos.comps) o[r.id]={desc:r.datos.desc||"",comps:r.datos.comps}; }); S.ofr=o; LS.set("ops_ofr",o); }));
   /* marcas por ciudad (solo excepciones) y categoria global de cada oferta: de las 5 ciudades */
@@ -728,10 +728,10 @@ async function cargarBase(force,coPedido){
   await Promise.all(p);
 }
 async function cargarMatriz(co,force){
-  if(!force&&S.matriz[co]) return S.matriz[co];
+  if(!force&&S.matriz[co]&&Date.now()-((S.matrizT||{})[co]||0)<300000) return S.matriz[co];
   var rows=await DB.list("matrices/"+co+"/lineas",{all:true}), m={};
   rows.forEach(function(r){ m[r.id]=r.datos||{}; });
-  S.matriz[co]=m; return m;
+  S.matriz[co]=m; S.matrizT=S.matrizT||{}; S.matrizT[co]=Date.now(); return m;
 }
 function loginComo(u){
   if(u.activo===false){ toast("Tu usuario está desactivado. Contacta al administrador."); return; }
@@ -2845,7 +2845,7 @@ function rcLeer(lista){
 /* ---- coordinador: cargar documentos, elegirlos y crear el recibo ---- */
 async function cargarRecibos(){
   var co=coActual(); RC.cargando=true; RC.err="";
-  try{ await cargarBase(false,co).catch(function(){}); RC.tareas=await tareasDe({"datos->>co":"eq."+co,"datos->>modulo":"eq.recibo"}); }
+  try{ await cargarBase(false,co).catch(function(){}); RC.tareas=await tareasDe({"datos->>co":"eq."+co,"datos->>modulo":"eq.recibo"}); await rcTraerDocs(co); }
   catch(e){ RC.err=e.message||"Sin conexión"; }
   RC.cargando=false; var c=cur(); if(c&&c.v==="recibos"&&!$(".sheet-bg")) render();
 }
@@ -2858,7 +2858,7 @@ VIEWS.recibos=function(){
   var ids=Object.keys(RC.docs).sort();
   if(ids.length){
     var tipoSel=null; Object.keys(RC.sel).forEach(function(i){ if(RC.docs[i]) tipoSel=RC.docs[i].tipo; });
-    h+='<h2>Documentos de '+esc((ciudadPorCo(coActual())||{nombre:""}).nombre)+' ('+ids.length+')</h2>';
+    h+='<h2>Documentos de '+esc((ciudadPorCo(coActual())||{nombre:""}).nombre)+' ('+ids.length+') <button class="btn ghost sm" data-act="rcquitardocs" style="float:right">Limpiar esta lista</button></h2>';
     h+=ids.map(function(id){ var d=RC.docs[id], r=rcRes(d), on=!!RC.sel[id], ya=RC.tareas.some(function(t){ return (t.datos.docsN||[]).indexOf(id)>=0; });
       return '<button class="task" data-act="rcsel" data-d="'+esc(id)+'"><div class="tt"><b class="mono">'+(on?'☑ ':'☐ ')+esc(id)+'</b><span class="chip '+(d.tipo==="TCO"?"info":"st-ok")+'">'+(d.tipo==="TCO"?"Traslado":"Orden de compra")+'</span></div><div class="sub">'+esc(d.origen||"")+(d.bodDesc?' → '+esc(d.bodDesc):' · bodega '+esc(d.bod))+'</div><div class="mini"><span class="chip">'+r.r+' referencias</span><span class="chip">'+nf(r.u)+' u.</span>'+(d.fecha?'<span class="chip info">'+esc(d.fecha.slice(5))+'</span>':'')+(ya?'<span class="chip warn">Ya tiene recibo</span>':'')+'</div>'+(d.nota?'<div class="small muted">'+esc(d.nota.slice(0,90))+'</div>':'')+'</button>'; }).join("");
     var n=Object.keys(RC.sel).filter(function(i){ return RC.docs[i]; }).length;
@@ -2881,7 +2881,7 @@ ACT.rccargar=function(){
   elegirExcels(function(lista){
     var r=rcLeer(lista), n=Object.keys(r.docs).length;
     r.err.forEach(function(e){ toast(e,5000); });
-    Object.keys(r.docs).forEach(function(k){ RC.docs[k]=r.docs[k]; });
+    Object.keys(r.docs).forEach(function(k){ RC.docs[k]=r.docs[k]; }); rcPersistirDocs(r.docs);
     toast(n?n+" documentos de tu ciudad"+(r.fuera?" · "+nf(r.fuera)+" líneas de otras ciudades omitidas":""):(r.err.length?"":"No hay documentos de tu ciudad en este archivo"),5000);
     render();
   });
@@ -3028,6 +3028,21 @@ async function rcRefrescar(){
   if(!RC.t||$(".sheet-bg")) return;
   try{ var r=await DB.get("ops_tareas",RC.t.id); if(r){ RC.t.d=r.datos; var c=cur(); if(c&&c.v==="recibo"){ var a=document.activeElement; if(!(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))) render(); } } }catch(e){}
 }
+/* Los documentos cargados desde SIESA se guardan en la nube por ciudad: cualquier coordinador los ve y no se pierden al recargar */
+async function rcPersistirDocs(docs){
+  var co=coActual(), ids=Object.keys(docs||{}); if(!ids.length) return;
+  try{ await DB.setMany("ops_recibo_docs",ids.map(function(k){ return {id:k,datos:Object.assign({},docs[k],{co:co,cargadoEn:ahora()})}; })); }catch(e){ toast("No se pudieron compartir los documentos con otros equipos: "+(e.message||e),6000); }
+}
+async function rcTraerDocs(co){
+  var rs=await DB.list("ops_recibo_docs",{filter:{"datos->>co":"eq."+co},all:true}), viejos=Date.now()-5*864e5, docs={};
+  for(var i=0;i<rs.length;i++){ var d=rs[i].datos||{}; if(d.cargadoEn&&Date.parse(d.cargadoEn)<viejos){ try{ await DB.del("ops_recibo_docs",rs[i].id); }catch(e){} continue; } docs[rs[i].id]=d; }
+  RC.docs=docs;
+}
+ACT.rcquitardocs=async function(){
+  if(!confirm("¿Limpiar la lista de documentos cargados de SIESA de esta ciudad? Se limpia para todos los equipos. Los recibos ya creados no se tocan.")) return;
+  try{ var co=coActual(), rs=await DB.list("ops_recibo_docs",{filter:{"datos->>co":"eq."+co},all:true,select:"id"}); for(var i=0;i<rs.length;i++) await DB.del("ops_recibo_docs",rs[i].id); RC.docs={}; RC.sel={}; toast("Lista limpia"); render(); }
+  catch(e){ toast("No se pudo limpiar: "+(e.message||e),8000); }
+};
 
 /* ===== 64b_ciclico.js ===== */
 /* ---------- CONTEO CICLICO: plan de un mes habil, conteo a ciegas por dia y confiabilidad ---------- */
@@ -3438,7 +3453,7 @@ ACT.limpiar=async function(){ var r=await limpiarResiduos(coActual(),false); var
 var DN={t:null,aplicando:false};
 function despNubeDoc(co){
   var D=S.desp, xl={}, xc={}; Object.keys(D.lineas||{}).forEach(function(k){ if((D.src||{})[k]==="xls"){ xl[k]=D.lineas[k]; if(D.clientes&&D.clientes[k]) xc[k]=D.clientes[k]; } });
-  return {co:co,planillas:(D.planillas||[]).filter(function(p){ return !p.co||p.co===co; }),reenv:((D.reenv||{})[co])||{},xlsL:xl,xlsC:xc,cargadoEn:D.cargadoEn||0,actualizadoEn:ahora(),por:S.me?S.me.id:""};
+  return {co:co,planillas:(D.planillas||[]).filter(function(p){ return !p.co||p.co===co; }),reenv:((D.reenv||{})[co])||{},ack:((D.ack||{})[co])||{},xlsL:xl,xlsC:xc,cargadoEn:D.cargadoEn||0,actualizadoEn:ahora(),por:S.me?S.me.id:""};
 }
 function despNubePush(){
   if(!S.me||!esCoord()||DN.aplicando) return; clearTimeout(DN.t); var co=coActual();
@@ -3449,7 +3464,7 @@ async function despNubePull(){
   var co=coActual(), r=await DB.get("ops_planillas",co); if(!r) return false; var d=r.datos||{}, D=S.desp; DN.aplicando=true;
   try{
     D.planillas=(D.planillas||[]).filter(function(p){ return p.co&&p.co!==co; }).concat(d.planillas||[]);
-    D.reenv=D.reenv||{}; D.reenv[co]=d.reenv||{}; D.src=D.src||{}; D.lineas=D.lineas||{}; D.clientes=D.clientes||{};
+    D.reenv=D.reenv||{}; D.reenv[co]=d.reenv||{}; D.ack=D.ack||{}; D.ack[co]=d.ack||{}; D.src=D.src||{}; D.lineas=D.lineas||{}; D.clientes=D.clientes||{};
     Object.keys(d.xlsL||{}).forEach(function(k){ D.lineas[k]=d.xlsL[k]; D.src[k]="xls"; if(d.xlsC&&d.xlsC[k]) D.clientes[k]=d.xlsC[k]; });
     D.cargadoEn=d.cargadoEn||D.cargadoEn; LS.set("ops_desp",D);
   }finally{ DN.aplicando=false; }
@@ -3662,6 +3677,7 @@ document.addEventListener("click",function(e){
 });
 function alEntrar(v){
   try{
+    if(S.me&&esCoord()) cargarUsuarios().catch(function(){});
     if(v==="tablero"){ TB.datos=null; TB.co=""; cargarTablero(); }
     else if(v==="ali") cargarAli();
     else if(v==="desp") cargarDesp();
