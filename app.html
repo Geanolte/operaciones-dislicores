@@ -2392,9 +2392,15 @@ async function publicarPl(cal,aux){
   var tp=tareaDePlanilla(pl);
   if(tp){ PUB_MOTIVO="ya está publicado ("+(tp.datos.asignadoNombre||"sin asignar")+")"; return 0; }
   var ex=await DB.get("ops_tareas",sid+"--SIN");
-  if(ex){
-    var dx=ex.datos||{}, avance=(dx.ok||0)+(dx.parc||0)+(dx.no||0);
-    if(avance||dx.estado==="completada"||dx.asignadoId){ PUB_MOTIVO="ya existe publicado y con avance ("+(dx.estado||"")+")"; return 0; }
+  if(ex){ var dx=ex.datos||{}, avance=(dx.ok||0)+(dx.parc||0)+(dx.no||0);
+    if((avance||dx.estado==="completada"||dx.asignadoId)&&pl.revision){
+      /* la revisión de hoy ya se hizo: esta es una nueva, con su propio número (REV-fecha-2, -3...) */
+      var base=String(pl.num).replace(/-\d+$/,""), k=2, libre=false;
+      while(!libre&&k<50){ var cand=base+"-"+k, e2=await DB.get("ops_tareas","D"+cand+"--SIN"); if(e2){ k++; } else libre=true; }
+      pl.num=base+"-"+k; sid="D"+pl.num; LS.set("ops_desp",S.desp);
+      ex=null;
+    }
+    if(ex&&(avance||dx.estado==="completada"||dx.asignadoId)){ PUB_MOTIVO="ya existe publicado y con avance ("+(dx.estado||"")+")"; return 0; }
     /* publicación anterior sin avance (p. ej. la misma revisión del día): se reemplaza */
   }
   var items=cal.items.map(function(i){ return Object.assign({},i,{tipos:"FAC",seq:0,zona:"",cemp:avisoEmpaque(i.ref)}); });
