@@ -2383,10 +2383,20 @@ function errorSinAlistarHtml(pl,corto){
   return '<div class="hint" style="margin-top:6px;border-left:4px solid #c0392b;color:#c0392b"><b>Error operativo: '+s.length+' documento'+(s.length>1?'s':'')+' sin separar</b> ('+listaDocs(s,corto?4:15)+'). No se puede publicar este vehículo con mercancía que no está en el carro.'+(corto?'':'<br><span class="muted">Sepárala en un alistamiento si sí va, o quita esos documentos de la planilla en el ERP y vuelve a cargar la PLF/PLI.</span>')+'</div>';
 }
 /* ===== Publicar varios vehiculos a la vez ===== */
+var PUB_MOTIVO="";
 async function publicarPl(cal,aux){
   var pl=cal.pl, sid="D"+pl.num, co=coActual();
-  if(sinAlistarDe(pl).length) return 0;
-  if(!cal.items.length||tareaDePlanilla(pl)||(await DB.get("ops_tareas",sid+"--SIN"))) return 0;
+  PUB_MOTIVO="";
+  if(sinAlistarDe(pl).length){ PUB_MOTIVO="tiene documentos sin separar"; return 0; }
+  if(!cal.items.length){ PUB_MOTIVO="no tiene líneas (sin referencias para cargar)"; return 0; }
+  var tp=tareaDePlanilla(pl);
+  if(tp){ PUB_MOTIVO="ya está publicado ("+(tp.datos.asignadoNombre||"sin asignar")+")"; return 0; }
+  var ex=await DB.get("ops_tareas",sid+"--SIN");
+  if(ex){
+    var dx=ex.datos||{}, avance=(dx.ok||0)+(dx.parc||0)+(dx.no||0);
+    if(avance||dx.estado==="completada"||dx.asignadoId){ PUB_MOTIVO="ya existe publicado y con avance ("+(dx.estado||"")+")"; return 0; }
+    /* publicación anterior sin avance (p. ej. la misma revisión del día): se reemplaza */
+  }
   var items=cal.items.map(function(i){ return Object.assign({},i,{tipos:"FAC",seq:0,zona:"",cemp:avisoEmpaque(i.ref)}); });
   var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:(reenvDe()[f]?"[VOLVER A ENVIAR] ":"")+(cl[f]||""),l:S.desp.lineas[f]}; });
   var doc=tareaDoc("despacho",sid,(pl.revision?"Verificación de lo separado y no despachado · ":"Cargue "+pl.placa+" · ")+(pl.revision?pl.num:etiquetaPl(pl)),co,aux,items,{docsN:pl.facs,placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
@@ -2410,7 +2420,7 @@ ACT.enviarsel=async function(){
   var sel=$("#selsel"), aux=sel?sel.value:"", cal=planillasCalc().filter(function(c){ return SELP[c.pl.num]; });
   if(!cal.length){ toast("Elige al menos un vehículo"); return; }
   if(!confirmarSep(cal)) return;
-  try{ var n=0; for(var i=0;i<cal.length;i++) n+=await publicarPl(cal[i],aux); SELP={}; toast(n+" vehículo"+(n===1?"":"s")+" publicado"+(n===1?"":"s")+(aux?" a "+nombreDe(aux):" (disponibles para los auxiliares)")); await cargarDesp(); }
+  try{ var n=0; for(var i=0;i<cal.length;i++) n+=await publicarPl(cal[i],aux); SELP={}; toast(n?n+" vehículo"+(n===1?"":"s")+" publicado"+(n===1?"":"s")+(aux?" a "+nombreDe(aux):" (disponibles para los auxiliares)"):"No se publicó: "+(cal.length===1?cal[0].pl.placa+" ":"")+(PUB_MOTIVO||"sin cambios")); await cargarDesp(); }
   catch(e){ toast("No se pudo publicar: "+(e.message||e)); }
 };
 
@@ -3364,7 +3374,7 @@ ACT.dsseltodos=function(){ var cal=planillasCalc(); dsFiltrar(cal).forEach(funct
 ACT.pubuno=async function(el,d){
   var cal=planillasCalc().filter(function(c){ return c.pl.num===d("n"); }); if(!cal.length) return;
   if(!confirmarSep(cal)) return;
-  try{ var n=await publicarPl(cal[0],""); toast(n?"Vehículo "+cal[0].pl.placa+" publicado: disponible para los auxiliares":"No se pudo publicar este vehículo"); await cargarDesp(); render(); }catch(e){ toast("No se pudo publicar: "+(e.message||e)); }
+  try{ var n=await publicarPl(cal[0],""); toast(n?"Vehículo "+cal[0].pl.placa+" publicado: disponible para los auxiliares":"No se publicó: "+(PUB_MOTIVO||"sin cambios")); await cargarDesp(); render(); }catch(e){ toast("No se pudo publicar: "+(e.message||e)); }
 };
 VIEWS.desp=function(){
   topbar("Despacho",subtituloUsuario(),true);
