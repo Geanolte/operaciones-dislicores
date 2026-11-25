@@ -301,7 +301,7 @@ function $$(s,r){ return Array.prototype.slice.call((r||document).querySelectorA
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
 var LS = {
   get:function(k,d){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } },
-  set:function(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); return true; }catch(e){ return false; } },
+  set:function(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); if(k==="ops_desp"&&typeof despNubePush==="function") despNubePush(); return true; }catch(e){ return false; } },
   raw:function(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
   setRaw:function(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
   del:function(k){ try{ localStorage.removeItem(k); }catch(e){} }
@@ -2146,6 +2146,7 @@ async function cargarDesp(){
   if(S.desp.cargadoEn&&Date.now()-S.desp.cargadoEn>3*864e5){ S.desp={planillas:[],lineas:{},clientes:{},archivos:[],src:{}}; LS.set("ops_desp",S.desp); toast("Se limpiaron las planillas cargadas hace más de 3 días",4000); }
   try{
     await cargarVeh();
+    try{ var okN=await despNubePull(); if(!okN&&(S.desp.planillas||[]).some(function(p){ return p.co===co; })) despNubePush(); await despCompletarLocal(); }catch(e){}
     var ts=await tareasDe({"datos->>co":"eq."+co,"datos->>modulo":"eq.despacho"}); DP.tareas={}; ts.forEach(function(t){ DP.tareas[t.datos.sid]=t; });
   }catch(e){ toast(e.message||"Sin conexión"); }
   try{ await traerDocs(); }catch(e){}
@@ -2266,7 +2267,7 @@ ACT.enviarcargue=async function(){
     var doc=tareaDoc("despacho",sid,(pl.revision?"Verificación de lo separado y no despachado · ":"Cargue "+pl.placa+" · ")+(pl.revision?pl.num:etiquetaPl(pl)),co,aux,items,{docsN:pl.facs,placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
     await DB.set("ops_tareas",doc.id,doc.datos); toast(aux?"Asignado a "+nombreDe(aux):"Vehículo publicado: los auxiliares de "+(ciudadPorCo(co)||{nombre:co}).nombre+" lo ven disponible"); await cargarDesp();
   }catch(e){ toast("No se pudo enviar: "+(e.message||e)); }
-};ACT.borrardesp=function(){ if(confirm("¿Borrar las planillas y facturas cargadas en este dispositivo? Los cargues ya publicados a los auxiliares NO se borran aquí: se eliminan en la sección «Cargues publicados» de esta misma pantalla.")){ S.desp={planillas:[],lineas:{},clientes:{},archivos:[],src:{}}; LS.set("ops_desp",S.desp); render(); } };
+};ACT.borrardesp=function(){ if(confirm("¿Borrar las planillas y facturas cargadas de esta ciudad? Se borran para todos los equipos. Los cargues ya publicados a los auxiliares NO se borran aquí: se eliminan en la sección «Cargues publicados» de esta misma pantalla.")){ S.desp={planillas:[],lineas:{},clientes:{},archivos:[],src:{}}; LS.set("ops_desp",S.desp); render(); } };
 ACT.cargapla=function(){
   elegirExcels(function(lista){
     var co=coActual(), anul=0, ajenas=0, errs=[], mp={}, orden=[];
@@ -3431,6 +3432,34 @@ async function limpiarResiduos(co,silencioso){
   return rep;
 }
 ACT.limpiar=async function(){ var r=await limpiarResiduos(coActual(),false); var c=cur(); if(c){ if(c.v==="enrut") cargarEnr(); else if(c.v==="desp") cargarDesp().then(render); else render(); } };
+
+/* ===== 66c_despnube.js ===== */
+/* ---------- Planillas de Despacho en la nube: todos los equipos de una ciudad ven lo mismo ---------- */
+var DN={t:null,aplicando:false};
+function despNubeDoc(co){
+  var D=S.desp, xl={}, xc={}; Object.keys(D.lineas||{}).forEach(function(k){ if((D.src||{})[k]==="xls"){ xl[k]=D.lineas[k]; if(D.clientes&&D.clientes[k]) xc[k]=D.clientes[k]; } });
+  return {co:co,planillas:(D.planillas||[]).filter(function(p){ return !p.co||p.co===co; }),reenv:((D.reenv||{})[co])||{},xlsL:xl,xlsC:xc,cargadoEn:D.cargadoEn||0,actualizadoEn:ahora(),por:S.me?S.me.id:""};
+}
+function despNubePush(){
+  if(!S.me||!esCoord()||DN.aplicando) return; clearTimeout(DN.t); var co=coActual();
+  DN.t=setTimeout(function(){ DB.set("ops_planillas",co,despNubeDoc(co)).catch(function(){}); },800);
+}
+/* Trae lo de la nube y lo aplica a este equipo. Devuelve true si habia algo en la nube. */
+async function despNubePull(){
+  var co=coActual(), r=await DB.get("ops_planillas",co); if(!r) return false; var d=r.datos||{}, D=S.desp; DN.aplicando=true;
+  try{
+    D.planillas=(D.planillas||[]).filter(function(p){ return p.co&&p.co!==co; }).concat(d.planillas||[]);
+    D.reenv=D.reenv||{}; D.reenv[co]=d.reenv||{}; D.src=D.src||{}; D.lineas=D.lineas||{}; D.clientes=D.clientes||{};
+    Object.keys(d.xlsL||{}).forEach(function(k){ D.lineas[k]=d.xlsL[k]; D.src[k]="xls"; if(d.xlsC&&d.xlsC[k]) D.clientes[k]=d.xlsC[k]; });
+    D.cargadoEn=d.cargadoEn||D.cargadoEn; LS.set("ops_desp",D);
+  }finally{ DN.aplicando=false; }
+  return true;
+}
+/* En este equipo faltan las lineas de documentos de las planillas: se traen de las sesiones de alistamiento */
+async function despCompletarLocal(){
+  var co=coActual(), D=S.desp; var falta=!CON.docs||(D.planillas||[]).some(function(p){ return (!p.co||p.co===co)&&(p.facs||[]).some(function(f){ return !D.lineas[f]; }); });
+  if(falta){ try{ await traerDocs(); await cargarTareasAli(); }catch(e){} }
+}
 
 /* ===== 70_admin_panel.js ===== */
 /* ---------- Administracion: mismo estilo que la matriz (panel de acciones a la izquierda, lista a la derecha) y todo se puede eliminar: uno por uno o los de la lista de una vez ---------- */
