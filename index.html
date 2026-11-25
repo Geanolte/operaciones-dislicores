@@ -122,24 +122,24 @@ table.lst tbody tr:nth-child(even){background:#f0f0f0}
 table.lst .n{text-align:right;white-space:nowrap}
 table.lst .ck{text-align:center;width:28px}
 @media print{
-  @page{size:letter landscape;margin:7mm 8mm 10mm 8mm}
+  @page{size:letter portrait;margin:8mm 8mm 10mm 8mm}
   html,body{background:#fff!important}
   #top,.noprint,.toast,nav{display:none!important}
   main#app{max-width:none!important;width:100%!important;margin:0!important;padding:0!important}
   .lst-sheet{border:0;padding:0;margin:0;overflow:visible;border-radius:0}
   .lst-title{font-size:16px;padding:5px;border-radius:3px}
-  .lst-res{margin:5px 0;font-size:13px}
-  .lst-res th,.lst-res td{padding:3px 7px}
+  .lst-res{margin:4px 0;font-size:11px}
+  .lst-res th,.lst-res td{padding:2px 5px}
   .lst-res th{width:11%;white-space:nowrap}
-  table.lst{font-size:15px;width:100%}
-  table.lst th{padding:5px 7px;font-size:13px}
-  table.lst td{padding:5px 7px;line-height:1.2}
-  table.lst td.n{font-size:17px}
+  table.lst{font-size:11.5px;width:100%}
+  table.lst th{padding:3px 4px;font-size:10.5px}
+  table.lst td{padding:3px 4px;line-height:1.15}
+  table.lst td.n{font-size:13px}
   table.lst{table-layout:fixed;width:100%}
   table.lst .c-ub{width:9%} table.lst .c-ref{width:11%} table.lst .c-bod{width:8%} table.lst .c-bar{width:14.5%} table.lst .c-ue{width:5%} table.lst .c-q{width:11%}
   table.lst td,table.lst th{overflow-wrap:anywhere}
   table.lst th{letter-spacing:0;white-space:nowrap}
-  table.lst td.mono{font-size:13.5px;letter-spacing:0}
+  table.lst td.mono{font-size:11px;letter-spacing:0}
   html,body{width:100%!important;overflow:visible!important}
   table.lst tbody tr:nth-child(even) td{background:#dcdcdc!important}
   table.lst tbody tr:nth-child(odd) td{background:#fff!important}
@@ -831,11 +831,18 @@ function escanear(titulo,onCode){
     try{ if(zx) zx.reset(); }catch(e){} zx=null;
     if(S.modoScan==="lector"){
       a.innerHTML='<div class="hint">Dispare el lector sobre el producto: el código entra solo.</div><input id="scLec" type="text" inputmode="none" autocomplete="off" placeholder="Esperando lectura…" style="margin-top:8px">';
-      var inp=$("#scLec",bg), t0=0, tm=null;
+      var inp=$("#scLec",bg), tm=null;
       function enviar(){ clearTimeout(tm); var c=inp.value.trim(); inp.value=""; if(c) fin(c); }
-      inp.onkeydown=function(e){ if(e.key==="Enter"||e.key==="Tab"){ e.preventDefault(); enviar(); } };
-      inp.oninput=function(){ var n=inp.value.length,now=Date.now(); if(n===1) t0=now; clearTimeout(tm); tm=setTimeout(function(){ var l=inp.value.length; if(l>=6&&t0&&(now-t0)/Math.max(l-1,1)<60) enviar(); },140); };
-      setTimeout(function(){ inp.focus(); },80);
+      /* Cualquier lector: con o sin Enter al final, rápido o lento. Aquí nadie teclea, así que al quedarse quieto el texto (250 ms) se envía solo. */
+      inp.onkeydown=function(e){ if(e.key==="Enter"||e.key==="Tab"||e.keyCode===13||e.keyCode===9){ e.preventDefault(); enviar(); } };
+      inp.oninput=function(){ clearTimeout(tm); tm=setTimeout(function(){ if(inp.value.trim().length>=4) enviar(); },250); };
+      inp.onchange=function(){ enviar(); };
+      /* si el foco se pierde (toque en pantalla, reaparece el teclado), vuelve al campo del lector */
+      var man=$("#scMan",bg);
+      function volver(){ if(!document.body.contains(inp)||S.modoScan!=="lector") return; if(document.activeElement!==inp&&document.activeElement!==man) inp.focus(); }
+      inp.onblur=function(){ setTimeout(volver,150); };
+      bg.addEventListener("click",function(e){ if(e.target.id!=="scMan"&&e.target.tagName!=="BUTTON") setTimeout(volver,50); });
+      setTimeout(function(){ inp.focus(); },80); setTimeout(volver,500);
     } else {
       a.innerHTML='<div class="video"><video id="scVid" muted playsinline></video><div class="fr"></div></div><div id="scSt" class="small muted">Apunte la cámara al código de barras.</div>';
       if(window.ZXing&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){
@@ -850,7 +857,9 @@ function escanear(titulo,onCode){
   }
   $$("[data-m]",bg).forEach(function(c){ c.onclick=function(){ S.modoScan=c.getAttribute("data-m"); LS.setRaw("ops_scanmode",S.modoScan); pintar(); }; });
   $("#scOk",bg).onclick=function(){ fin($("#scMan",bg).value); };
-  $("#scMan",bg).onkeydown=function(e){ if(e.key==="Enter") fin(e.target.value); };
+  $("#scMan",bg).onkeydown=function(e){ if(e.key==="Enter"||e.keyCode===13) fin(e.target.value); };
+  /* si el lector dispara dentro de este campo: texto largo que llegó de golpe (≤90 ms por carácter) se envía solo */
+  (function(){ var m=$("#scMan",bg), t0=0, tm=null; m.oninput=function(){ var n=m.value.length; if(n===1) t0=Date.now(); clearTimeout(tm); var ini=t0; tm=setTimeout(function(){ var l=m.value.length; if(l>=8&&ini&&(Date.now()-ini)/Math.max(l,1)<90+250/l) fin(m.value); },260); }; })();
   $("#scX",bg).onclick=function(){ cerrarSheet(); };
   pintar();
 }
