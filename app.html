@@ -2471,7 +2471,16 @@ function conciliar(){
   var tot=0; sinPlanilla.forEach(function(k){ (CON.docs[k].l||[]).forEach(function(a){ tot+=(+a[4]||0); }); });
   return {sinPlanilla:sinPlanilla,sinAlistar:sinAlistar,dif:dif,unidSin:tot};
 }
-function listaDocs(ks,n){ var t=ks.slice(0,n).map(function(k){ var c=(S.desp.clientes||{})[k]||(CON.docs&&CON.docs[k]&&CON.docs[k].cli)||""; return '<span class="mono">'+esc(k)+'</span>'+(c?' <small class="muted">'+esc(c)+'</small>':''); }).join(" · "); return t+(ks.length>n?' … y '+(ks.length-n)+' más':''); }
+var LDM={n:0,h:{}};
+function listaDocs(ks,n){
+  var uno=function(k){ var c=(S.desp.clientes||{})[k]||(CON.docs&&CON.docs[k]&&CON.docs[k].cli)||""; return '<span class="mono">'+esc(k)+'</span>'+(c?' <small class="muted">'+esc(c)+'</small>':''); };
+  var t=ks.slice(0,n).map(uno).join(" · ");
+  if(ks.length<=n) return t;
+  var id="m"+(++LDM.n); LDM.h[id]=' · '+ks.slice(n).map(uno).join(" · ");
+  return t+' … <span class="ldmas" data-act="ldmas" data-id="'+id+'" style="font-weight:700;text-decoration:underline;cursor:pointer;color:var(--gold,#8a6d2b)">y '+(ks.length-n)+' más ▾</span>';
+}
+/* «y N más»: muestra el resto de los documentos en el mismo lugar (también dentro de las ventanas de aviso) */
+ACT.ldmas=function(el,d){ var h=LDM.h[d("id")]; if(h==null) return; var sp=document.createElement("span"); sp.innerHTML=h; el.replaceWith(sp); };
 /* Al cargar la planilla: si hay documentos separados que no estan planillados, se pide confirmar que se sigue con el despacho */
 function ackDe(){ S.desp.ack=S.desp.ack||{}; return (S.desp.ack[coActual()]=S.desp.ack[coActual()]||{}); }
 function confirmarFaltantes(){
