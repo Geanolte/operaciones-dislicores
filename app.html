@@ -924,6 +924,7 @@ VIEWS.home=function(){
     if(sinA.length) h+='<h2>Referencias sin asignar</h2>'+sinA.map(function(x){ var dd=x.datos, hh=(dd.ok||0)+(dd.parc||0)+(dd.no||0); return '<div class="card"><b>'+esc(dd.titulo)+'</b><div class="small muted">'+nf(dd.total)+' referencias sin dueño · '+hh+' separadas. Puedes separar las que quieras buscándolas por código o por palabras.</div>'+barra(dd.total?hh/dd.total:0,true)+'<div class="sp"></div><button class="btn block" data-act="abrirlibre" data-id="'+esc(x.id)+'">Abrir y separar</button></div>'; }).join("");    if(!act.length&&!HOME.sem.some(function(x){ return estadoSem(x)!=="completada"; })&&!HOME.libres.length) h+='<div class="empty">'+(HOME.cargando?"Buscando tus tareas…":"No tienes tareas pendientes.<br>Cuando tu coordinador te asigne una, aparecerá aquí.")+'</div>';
     var semFin=HOME.sem.filter(function(x){ return estadoSem(x)==="completada"; });
     if(fin.length||semFin.length){ h+='<h2>Completadas</h2>'; semFin.forEach(function(x){ h+=semCardHtml(x,""); }); fin.slice(0,8).forEach(function(t){ h+=tareaHtml(t,'data-act="abrirtarea" data-id="'+esc(t.id)+'"'); }); }
+    h+='<h2>Herramientas</h2><div class="tg"><button class="tile" data-act="ir" data-v="ubic"><div class="ic">⌖</div><div><b>Ubicaciones <i class="bobra">EN CONSTRUCCIÓN</i></b><span>Pistolea productos y marca en qué sitio de la bodega están</span></div></button></div>';
     h+='<h2>Mi dispositivo</h2><div class="card"><label class="lb" style="margin-top:0">Cómo escanea</label><div class="row"><span class="chip btn2 '+(S.modoScan==="camara"?"sel":"")+'" data-act="scan" data-m="camara">Cámara</span><span class="chip btn2 '+(S.modoScan==="lector"?"sel":"")+'" data-act="scan" data-m="lector">Pistola / lector</span></div>'+
       '<p class="small muted" style="margin-top:10px">Escaneo obligatorio: <b>'+(S.exigir?"sí":"no")+'</b>. Lo define tu coordinador: '+(S.exigir?"el producto solo se confirma si el código leído coincide.":"puedes confirmar el producto sin escanearlo.")+'</p></div>';
     app(h); return;
@@ -936,6 +937,7 @@ VIEWS.home=function(){
     (puedeEnrutar()?'<button class="tile" data-act="ir" data-v="enrut"><div class="ic">⇄</div><div><b>Enrutador <i class="bobra">EN CONSTRUCCIÓN</i></b><span>Asignar los documentos separados a cada vehículo y carga antes de despachar (piloto)</span></div></button>':'')+
     '<button class="tile" data-act="ir" data-v="recibos"><div class="ic">▼</div><div><b>Recibo'+nb("recibo")+' <i class="bobra">EN CONSTRUCCIÓN</i></b><span>Descargar un vehículo contra el traslado (TCO) o la orden de compra</span></div></button>'+
     '<button class="tile" data-act="ir" data-v="ciclico"><div class="ic">↻</div><div><b>Conteo cíclico'+nb("ciclico")+' <i class="bobra">EN CONSTRUCCIÓN</i></b><span>Programación diaria de conteos y confiabilidad del inventario</span></div></button>'+
+    '<button class="tile" data-act="ir" data-v="ubic"><div class="ic">⌖</div><div><b>Ubicaciones <i class="bobra">EN CONSTRUCCIÓN</i></b><span>Mapa de la bodega: dónde está cada referencia, registrado por los auxiliares</span></div></button>'+
     '<button class="tile" data-act="irrepdesp"><div class="ic">▤</div><div><b>Reporte de despacho</b><span>Consolidado por referencia, vehículo, documento o cliente, con descarga a Excel</span></div></button>'+
     '<button class="tile" data-act="irsem"><div class="ic">◐</div><div><b>Semáforos de vencimiento</b><span>Se abre con tu mismo usuario, sin volver a ingresar</span></div></button>'+
     '</div>'+pendientesHtml()+configEscaneoHtml()+
@@ -3501,6 +3503,164 @@ async function despCompletarLocal(){
   if(falta){ try{ await traerDocs(); await cargarTareasAli(); }catch(e){} }
 }
 
+/* ===== 67_ubicaciones.js ===== */
+/* ====================== UBICACIONES: mapa de la bodega construido por los auxiliares ======================
+   El auxiliar escribe dónde está parado (1, A, A-01-3, lo que defina) y pistolea productos: queda guardado
+   el código de barras, la referencia (del maestro) y la ubicación. Colección "ubicaciones", un documento por
+   ciudad+referencia: {co, ref, desc, barras:[], ubs:[{u,por,pn,en}]}. Un código que no está en el maestro
+   se guarda igual ("sin identificar") para que el coordinador le asigne la referencia. */
+var UB={co:"",docs:{},cargando:false,err:"",tab:"reg",q:"",ubi:LS.raw("ops_ubi")||"",solo:false,cont:true,rec:[],idx:null,idxN:-1,abiertas:{}};
+function ubNat(a,b){ return String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:"base"}); }
+function ubNorm(u){ return String(u==null?"":u).replace(/\s+/g," ").trim().toUpperCase(); }
+function ubIndice(){
+  var n=Object.keys(S.mae).length; if(UB.idx&&UB.idxN===n) return UB.idx;
+  var ix={}; Object.keys(S.mae).forEach(function(r){
+    var m=S.mae[r]||{}, k=normCod(r); if(k&&!ix[k]) ix[k]=r;
+    String(m.b||"").split(/[,;\s]+/).forEach(function(b){ var c=normCod(b); if(c&&!ix[c]) ix[c]=r; });
+  });
+  UB.idx=ix; UB.idxN=n; return ix;
+}
+async function cargarUbic(){
+  var co=coActual(); if(UB.co!==co){ UB.docs={}; UB.rec=[]; UB.co=co; }
+  UB.cargando=true; UB.err="";
+  try{ await cargarBase(false,co).catch(function(){});
+    var rs=await DB.list("ubicaciones",{filter:{"datos->>co":"eq."+co},all:true}), m={}; rs.forEach(function(r){ m[r.id]=r.datos||{}; }); UB.docs=m; }
+  catch(e){ UB.err=e.message||"Sin conexión"; }
+  UB.cargando=false; var c=cur(); if(c&&c.v==="ubic"&&!$(".sheet-bg")) render();
+}
+function ubId(co,ref,n){ return co+"|"+(ref||("?"+n)); }
+/* registra un código leído en la ubicación actual */
+async function ubRegistrar(code){
+  var co=coActual(), ubi=ubNorm(UB.ubi);
+  if(!ubi){ toast("Primero escribe la ubicación donde estás",3500); return false; }
+  var cod=String(code||"").trim(), n=normCod(cod); if(!n&&!cod) return false;
+  var ref=ubIndice()[n]||"", m=ref?(S.mae[ref]||{}):{}, id=ubId(co,ref,n||cod);
+  var d=UB.docs[id]; if(!d){ try{ var r=await DB.get("ubicaciones",id); d=r?r.datos:null; }catch(e){} }
+  d=d||{co:co,ref:ref,desc:m.d||"",barras:[],ubs:[],creadoEn:ahora()};
+  d.ref=ref; d.desc=m.d||d.desc||""; d.barras=d.barras||[]; d.ubs=d.ubs||[];
+  /* se guarda el código leído; si lo que se escribió fue la referencia, se guarda el código de barras del maestro */
+  var guardar=(!ref||normCod(cod)!==normCod(ref))?cod:String(m.b||"").split(/[,;\s]+/)[0];
+  if(guardar&&d.barras.indexOf(guardar)<0) d.barras.push(guardar);
+  if(UB.solo) d.ubs=[];
+  var ya=d.ubs.filter(function(x){ return x.u===ubi; })[0], nuevo=!ya;
+  if(ya){ ya.en=ahora(); ya.por=S.me.id; ya.pn=S.me.nombre; } else d.ubs.push({u:ubi,por:S.me.id,pn:S.me.nombre,en:ahora()});
+  d.actualizadoEn=ahora();
+  try{ await DB.set("ubicaciones",id,d); }catch(e){ toast("No se pudo guardar: "+(e.message||e),5000); return false; }
+  UB.docs[id]=d; UB.rec.unshift({id:id,ref:ref,cod:cod,desc:d.desc,u:ubi,nuevo:nuevo,en:ahora()}); UB.rec=UB.rec.slice(0,12);
+  toast((ref?"✓ "+ref+" · "+(d.desc||"").slice(0,32):"✓ Código "+cod+" (sin identificar)")+" → "+ubi+(nuevo?"":" (ya estaba)"),2200);
+  return true;
+}
+ACT.ubescan=function(){
+  if(!ubNorm(UB.ubi)){ toast("Primero escribe la ubicación donde estás",3500); var i=$("#ubU"); if(i) i.focus(); return; }
+  escanear("Ubicación "+ubNorm(UB.ubi),async function(code){
+    var ok=await ubRegistrar(code); var c=cur(); if(c&&c.v==="ubic") render();
+    if(ok&&UB.cont) setTimeout(function(){ var c2=cur(); if(c2&&c2.v==="ubic"&&!$(".sheet-bg")) ACT.ubescan(); },300);
+  });
+};
+ACT.ubsolo=function(){ UB.solo=!UB.solo; render(); };
+ACT.ubcont=function(){ UB.cont=!UB.cont; render(); };
+ACT.ubtab=function(el,d){ UB.tab=d("t"); render(); };
+ACT.ubco=function(el,d){ S.coSel=d("co"); LS.setRaw("ops_cosel",S.coSel); UB.docs={}; render(); cargarUbic(); };
+ACT.ubabrir=function(el,d){ var k=d("k"); UB.abiertas[k]=!UB.abiertas[k]; render(); };
+ACT.ubquitar=async function(el,d){
+  var id=d("id"), u=d("u"), doc=UB.docs[id]; if(!doc) return;
+  var mio=(doc.ubs||[]).filter(function(x){ return x.u===u&&x.por===S.me.id; }).length;
+  if(!esCoord()&&!mio){ toast("Solo el coordinador puede quitar lo registrado por otra persona"); return; }
+  if(!confirm("¿Quitar "+(doc.ref||doc.barras[0]||"el código")+" de la ubicación "+u+"?")) return;
+  try{ doc.ubs=doc.ubs.filter(function(x){ return x.u!==u; });
+    if(!doc.ubs.length){ await DB.del("ubicaciones",id); delete UB.docs[id]; }
+    else await DB.set("ubicaciones",id,doc);
+    UB.rec=UB.rec.filter(function(r){ return !(r.id===id&&r.u===u); }); toast("Quitado"); render(); }
+  catch(e){ toast("No se pudo quitar: "+(e.message||e),5000); }
+};
+ACT.ubrenombrar=async function(el,d){
+  if(!esCoord()) return; var u=d("u"), nv=ubNorm(prompt("Nuevo nombre para la ubicación "+u+" (si ya existe, se unen):",u)||""); if(!nv||nv===u) return;
+  try{ var ids=Object.keys(UB.docs).filter(function(k){ return (UB.docs[k].ubs||[]).some(function(x){ return x.u===u; }); });
+    for(var i=0;i<ids.length;i++){ var doc=UB.docs[ids[i]], viejo=doc.ubs.filter(function(x){ return x.u===u; })[0]; doc.ubs=doc.ubs.filter(function(x){ return x.u!==u&&x.u!==nv; }).concat([Object.assign({},viejo,{u:nv})]); await DB.set("ubicaciones",ids[i],doc); }
+    toast("Ubicación renombrada ("+ids.length+" productos)"); render(); }catch(e){ toast("No se pudo renombrar: "+(e.message||e),5000); }
+};
+ACT.ubvaciar=async function(el,d){
+  if(!esCoord()) return; var u=d("u");
+  var ids=Object.keys(UB.docs).filter(function(k){ return (UB.docs[k].ubs||[]).some(function(x){ return x.u===u; }); });
+  if(!confirm("Se quitarán los "+ids.length+" productos de la ubicación "+u+". Los códigos y las demás ubicaciones de esos productos se conservan. ¿Continuar?")) return;
+  try{ for(var i=0;i<ids.length;i++){ var doc=UB.docs[ids[i]]; doc.ubs=doc.ubs.filter(function(x){ return x.u!==u; }); if(doc.ubs.length) await DB.set("ubicaciones",ids[i],doc); else { await DB.del("ubicaciones",ids[i]); delete UB.docs[ids[i]]; } }
+    toast("Ubicación vaciada"); render(); }catch(e){ toast("No se pudo: "+(e.message||e),5000); }
+};
+/* un código sin identificar: el coordinador le asigna la referencia y se pasa al documento de esa referencia */
+ACT.ubasignar=async function(el,d){
+  if(!esCoord()) return; var id=d("id"), doc=UB.docs[id]; if(!doc) return;
+  var ref=String(prompt("Referencia para el código "+(doc.barras[0]||"")+":","")||"").trim(); if(!ref) return;
+  var key=S.mae[ref]?ref:S.mae[ref.toUpperCase()]?ref.toUpperCase():""; if(!key){ toast("Esa referencia no está en el maestro"); return; }
+  try{ var id2=ubId(doc.co,key,""), r=await DB.get("ubicaciones",id2), t=(r&&r.datos)||{co:doc.co,ref:key,desc:S.mae[key].d||"",barras:[],ubs:[],creadoEn:ahora()};
+    doc.barras.forEach(function(b){ if(t.barras.indexOf(b)<0) t.barras.push(b); });
+    doc.ubs.forEach(function(x){ if(!t.ubs.some(function(y){ return y.u===x.u; })) t.ubs.push(x); });
+    t.desc=S.mae[key].d||t.desc; t.actualizadoEn=ahora(); await DB.set("ubicaciones",id2,t); await DB.del("ubicaciones",id); delete UB.docs[id]; UB.docs[id2]=t; toast("Asignado a "+key); render(); }
+  catch(e){ toast("No se pudo asignar: "+(e.message||e),5000); }
+};
+ACT.ubexcel=function(){
+  var filas=[["Ciudad","Ubicación","Referencia","Descripción","Código(s) de barras","Registrado por","Fecha"]], co=coActual();
+  Object.keys(UB.docs).forEach(function(k){ var d=UB.docs[k]; (d.ubs||[]).forEach(function(x){ filas.push([co,x.u,d.ref||"(sin identificar)",d.desc||"",(d.barras||[]).join(" / "),x.pn||"",String(x.en||"").slice(0,16).replace("T"," ")]); }); });
+  filas.sort(function(a,b){ return a[0]==="Ciudad"?-1:b[0]==="Ciudad"?1:(ubNat(a[1],b[1])||ubNat(a[2],b[2])); });
+  if(filas.length<2){ toast("Todavía no hay ubicaciones registradas"); return; }
+  descargarXlsx("Ubicaciones_"+co+"_"+new Date().toISOString().slice(0,10)+".xlsx","Ubicaciones",filas);
+};
+function ubFiltro(d){ var q=UB.q.trim().toLowerCase(); if(!q) return true; return (d.ref||"").toLowerCase().indexOf(q)>=0||(d.desc||"").toLowerCase().indexOf(q)>=0||(d.barras||[]).join(" ").toLowerCase().indexOf(q)>=0||(d.ubs||[]).some(function(x){ return x.u.toLowerCase().indexOf(q)>=0; }); }
+function ubStats(){
+  var refs=0, desc=0, us={}, pares=0; Object.keys(UB.docs).forEach(function(k){ var d=UB.docs[k]; if(d.ref) refs++; else desc++; (d.ubs||[]).forEach(function(x){ us[x.u]=1; pares++; }); });
+  return {refs:refs,desc:desc,ubs:Object.keys(us).length,pares:pares};
+}
+function ubFila(k,d,u){ /* una referencia dentro de una ubicación */
+  var otras=(d.ubs||[]).filter(function(x){ return x.u!==u; }).map(function(x){ return x.u; });
+  return '<div class="row" style="padding:5px 0;border-top:1px solid var(--line,#e5e5e5)"><div class="grow"><b class="mono">'+esc(d.ref||"sin identificar")+'</b> <span class="small">'+esc((d.desc||"").slice(0,48))+'</span>'+
+    '<div class="small muted">'+esc((d.barras||[])[0]||"")+(otras.length?' · también en '+esc(otras.join(", ")):'')+'</div></div><button class="btn ghost sm" data-act="ubquitar" data-id="'+esc(k)+'" data-u="'+esc(u)+'">Quitar</button></div>';
+}
+VIEWS.ubic=function(){
+  topbar("Ubicaciones",subtituloUsuario(),true);
+  var h=selectorCiudad("ubco")+avisoObra("Mapa de la bodega construido por los auxiliares: puede cambiar mientras se prueba.");
+  var st=ubStats();
+  h+='<div class="seg" style="margin:8px 0">'+[["reg","Registrar"],["ubi","Por ubicación"],["ref","Por referencia"]].concat(st.desc?[["sin","Sin identificar ("+st.desc+")"]]:[]).map(function(t){ return '<span class="chip btn2 '+(UB.tab===t[0]?"sel":"")+'" data-act="ubtab" data-t="'+t[0]+'">'+t[1]+'</span>'; }).join("")+'</div>';
+  if(UB.err) h+='<div class="hint warn">'+esc(UB.err)+'</div>';
+  if(UB.tab==="reg"){
+    h+='<div class="card gold"><label class="lb" style="margin-top:0">1. Ubicación donde estás parado</label><input id="ubU" type="text" autocapitalize="characters" autocomplete="off" placeholder="Ej.: 1, A, A-01-3, PASILLO 2" value="'+esc(UB.ubi)+'" style="font-size:20px;font-weight:700">'+
+      '<p class="small muted">Escribe el código que tú definas para ese sitio. Todo lo que pistolees queda en esa ubicación hasta que la cambies.</p>'+
+      '<label class="lb">2. Pistolea o escanea los productos de ese sitio</label>'+
+      '<button class="btn block" data-act="ubescan" style="font-size:18px;padding:14px">Escanear producto</button>'+
+      '<div class="row" style="flex-wrap:wrap;margin-top:8px"><span class="chip btn2 '+(UB.cont?"sel":"")+'" data-act="ubcont">'+(UB.cont?"☑":"☐")+' Seguir escaneando</span><span class="chip btn2 '+(UB.solo?"sel":"")+'" data-act="ubsolo">'+(UB.solo?"☑":"☐")+' Es su única ubicación (reemplaza las anteriores)</span></div></div>';
+    if(UB.rec.length) h+='<h2>Lo último que registraste</h2><div class="card">'+UB.rec.map(function(r){ return '<div class="row" style="padding:5px 0;border-top:1px solid var(--line,#e5e5e5)"><div class="grow"><b class="mono">'+esc(r.ref||"sin identificar")+'</b> <span class="small">'+esc((r.desc||"").slice(0,40))+'</span><div class="small muted">'+esc(r.cod)+' → <b>'+esc(r.u)+'</b></div></div><button class="btn ghost sm" data-act="ubquitar" data-id="'+esc(r.id)+'" data-u="'+esc(r.u)+'">Deshacer</button></div>'; }).join("")+'</div>';
+    h+='<p class="small muted">'+(UB.cargando?"Cargando…":nf(st.refs)+' referencias ubicadas en '+nf(st.ubs)+' ubicaciones'+(st.desc?' · '+st.desc+' códigos sin identificar':''))+'</p>';
+    app(h);
+    var u=$("#ubU"); if(u) u.oninput=function(){ UB.ubi=u.value.toUpperCase(); LS.setRaw("ops_ubi",UB.ubi); };
+    return;
+  }
+  h+='<div class="row" style="margin:6px 0"><input type="search" id="ubq" class="grow" placeholder="Buscar ubicación, referencia, descripción o código" value="'+esc(UB.q)+'">'+(esCoord()?'<button class="btn ghost sm" data-act="ubexcel">Excel</button>':'')+'</div>';
+  var ks=Object.keys(UB.docs).filter(function(k){ return ubFiltro(UB.docs[k]); });
+  if(UB.tab==="ubi"){
+    var mp={}; ks.forEach(function(k){ var d=UB.docs[k]; (d.ubs||[]).forEach(function(x){ if(UB.q&&!ubFiltro({ref:d.ref,desc:d.desc,barras:d.barras,ubs:[x]})) return; (mp[x.u]=mp[x.u]||[]).push(k); }); });
+    var us=Object.keys(mp).sort(ubNat), grupos={};
+    us.forEach(function(u){ var g=/[-_.\/ ]/.test(u)?u.split(/[-_.\/ ]/)[0]:"Sin zona"; (grupos[g]=grupos[g]||[]).push(u); });
+    if(!us.length) h+='<div class="empty">'+(UB.cargando?"Cargando…":"Todavía no hay ubicaciones registradas.")+'</div>';
+    Object.keys(grupos).sort(ubNat).forEach(function(g){
+      h+='<h2>'+esc(g==="Sin zona"?"Ubicaciones simples":"Zona / pasillo "+g)+' <span class="small muted">('+grupos[g].length+')</span></h2>';
+      grupos[g].forEach(function(u){ var abierta=UB.abiertas["u"+u]||!!UB.q;
+        h+='<div class="card"><div class="row" data-act="ubabrir" data-k="u'+esc(u)+'" style="cursor:pointer"><b class="grow mono" style="font-size:17px">'+esc(u)+'</b><span class="chip ok">'+mp[u].length+' ref.</span><span>'+(abierta?'▴':'▾')+'</span></div>';
+        if(abierta){ h+=mp[u].sort(function(a,b){ return ubNat(UB.docs[a].ref||"~"+a,UB.docs[b].ref||"~"+b); }).map(function(k){ return ubFila(k,UB.docs[k],u); }).join("")+(esCoord()?'<div class="row" style="margin-top:6px"><button class="btn ghost sm" data-act="ubrenombrar" data-u="'+esc(u)+'">Renombrar / unir</button><button class="btn ghost sm" style="color:#c0392b;border-color:#c0392b" data-act="ubvaciar" data-u="'+esc(u)+'">Vaciar</button></div>':''); }
+        h+='</div>'; });
+    });
+  } else if(UB.tab==="ref"){
+    ks=ks.filter(function(k){ return UB.docs[k].ref; }).sort(function(a,b){ return ubNat(UB.docs[a].ref,UB.docs[b].ref); });
+    if(!ks.length) h+='<div class="empty">'+(UB.cargando?"Cargando…":"Sin resultados.")+'</div>';
+    h+=ks.slice(0,150).map(function(k){ var d=UB.docs[k];
+      return '<div class="card"><b class="mono">'+esc(d.ref)+'</b> <span class="small">'+esc(d.desc||"")+'</span><div class="small muted">'+esc((d.barras||[]).join(" / "))+'</div>'+(d.ubs||[]).map(function(x){ return '<div class="row" style="padding:4px 0"><span class="chip ok mono grow" style="justify-content:flex-start">'+esc(x.u)+'</span><span class="small muted">'+esc(x.pn||"")+'</span><button class="btn ghost sm" data-act="ubquitar" data-id="'+esc(k)+'" data-u="'+esc(x.u)+'">Quitar</button></div>'; }).join("")+'</div>'; }).join("")+(ks.length>150?'<p class="small muted">Se muestran 150 de '+ks.length+': afina la búsqueda.</p>':'');
+  } else {
+    ks=ks.filter(function(k){ return !UB.docs[k].ref; });
+    h+='<div class="hint">Códigos que no están en el maestro. '+(esCoord()?'Asígnales la referencia correcta o quítalos.':'El coordinador los identificará.')+'</div>';
+    if(!ks.length) h+='<div class="empty">No hay códigos sin identificar.</div>';
+    h+=ks.map(function(k){ var d=UB.docs[k]; return '<div class="card"><b class="mono">'+esc((d.barras||[])[0]||k)+'</b><div class="small muted">'+(d.ubs||[]).map(function(x){ return esc(x.u)+' ('+esc(x.pn||"")+')'; }).join(" · ")+'</div>'+(esCoord()?'<div class="row" style="margin-top:6px"><button class="btn gold sm" data-act="ubasignar" data-id="'+esc(k)+'">Asignar referencia</button>'+(d.ubs&&d.ubs[0]?'<button class="btn ghost sm" data-act="ubquitar" data-id="'+esc(k)+'" data-u="'+esc(d.ubs[0].u)+'">Quitar</button>':'')+'</div>':'')+'</div>'; }).join("");
+  }
+  app(h);
+  enlazarBuscador("ubq",function(v){ UB.q=v; });
+};
+
 /* ===== 70_admin_panel.js ===== */
 /* ---------- Administracion: mismo estilo que la matriz (panel de acciones a la izquierda, lista a la derecha) y todo se puede eliminar: uno por uno o los de la lista de una vez ---------- */
 function layoutAdmin(cab,side,main){
@@ -3712,6 +3872,7 @@ function alEntrar(v){
     else if(v==="enrut") cargarEnr();
     else if(v==="recibos") cargarRecibos();
     else if(v==="ciclico") cargarCiclico();
+    else if(v==="ubic") cargarUbic();
     else if(v==="rutas") Promise.all([cargarBase(false),cargarCiuCo()]).then(function(){ var c=cur(); if(c&&c.v==="rutas") render(); }).catch(function(){});
     else if(v==="ofertas"||v==="maestro") cargarBase(false).then(function(){ var c=cur(); if(c&&c.v===v) render(); }).catch(function(){});
   }catch(e){}
