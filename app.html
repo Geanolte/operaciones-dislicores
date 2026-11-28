@@ -2451,11 +2451,15 @@ ACT.enviarsel=async function(){
 /* ===== Conciliacion: lo separado en el alistamiento contra lo que se va a despachar ===== */
 function sumaRefs(ls){ var m={}; (ls||[]).forEach(function(a){ m[a[0]]=(m[a[0]]||0)+(+a[4]||0); }); return m; }
 function conciliar(){
-  if(!CON.docs) return null;
+  if(!CON.docs) return null; if(typeof dfAuto==="function") dfAuto();
   var co=coActual(), pls=(S.desp.planillas||[]).filter(function(p){ return (!p.co||p.co===co)&&!p.revision; });
   if(!pls.length) return null;
-  var enPl={}, ord=[]; pls.forEach(function(p){ p.facs.forEach(function(f){ if(!enPl[f]){ enPl[f]=p; ord.push(f); } }); });
-  var sinPlanilla=Object.keys(CON.docs).filter(function(k){ return !enPl[k]&&docVigente(k); });
+  /* Ámbito: por defecto solo el día que se está viendo (DF.fecha). Un documento ya planillado en cualquier día no se cuenta como faltante,
+     pero solo se analizan las planillas y las sesiones de ese día: lo de días anteriores no contamina la revisión. */
+  var amb=DF.fecha||"", enPl={}, ord=[];
+  pls.forEach(function(p){ p.facs.forEach(function(f){ if(!enPl[f]) enPl[f]=p; }); });
+  pls.forEach(function(p){ if(amb&&p.fecha!==amb) return; p.facs.forEach(function(f){ if(ord.indexOf(f)<0) ord.push(f); }); });
+  var sinPlanilla=Object.keys(CON.docs).filter(function(k){ if(enPl[k]||!docVigente(k)) return false; if(!amb) return true; var fs=fechaDeSid(CON.docs[k].sid); return !fs||fs===amb; });
   var sinAlistar=ord.filter(function(f){ return !CON.docs[f]&&!reenvDe()[f]; });
   var dif=[];
   ord.forEach(function(f){
@@ -2474,7 +2478,7 @@ function confirmarFaltantes(){
   var c=conciliar(); if(!c){ return; }
   var ack=ackDe(), nuevos=c.sinPlanilla.filter(function(k){ return !ack[k]; });
   if(!nuevos.length){ avisoConciliacion(); return; }
-  var tot=Object.keys(CON.docs).filter(docVigente).length, plan=tot-c.sinPlanilla.length;
+  var tot=Object.keys(CON.docs).filter(function(k){ if(!docVigente(k)) return false; var fs=fechaDeSid(CON.docs[k].sid); return !DF.fecha||!fs||fs===DF.fecha; }).length, plan=tot-c.sinPlanilla.length;
   var bg=abrirSheet('<h3>Faltan documentos en la planilla</h3><p>En el alistamiento se separaron <b>'+nf(tot)+' documentos</b> y solo <b>'+nf(plan)+'</b> están en las planillas. <b>Faltan '+nf(nuevos.length)+'</b>:</p><p class="small">'+listaDocs(nuevos,15)+'</p><p><b>¿Seguimos con el despacho así?</b></p><button class="btn gold block" id="cfSi">Sí, seguir con el despacho</button><div class="sp"></div><button class="btn ghost block" id="cfNo">No, voy a revisar la planilla</button><p class="small muted">Si sigues, al terminar el despacho la app te preguntará si quieres generar una orden de verificación de lo que se separó y no se despachó.</p>');
   $("#cfSi",bg).onclick=function(){ nuevos.forEach(function(k){ ack[k]=1; }); LS.set("ops_desp",S.desp); cerrarSheet(); toast("Seguimos con el despacho. Al final podrás generar la verificación.",4000); render(); };
   $("#cfNo",bg).onclick=function(){ cerrarSheet(); toast("Corrige la planilla y vuelve a cargarla; el aviso sigue visible en Despacho.",5000); render(); };
@@ -2642,8 +2646,9 @@ function reenvDe(){ S.desp.reenv=S.desp.reenv||{}; return (S.desp.reenv[coActual
 function sesFechaDe(f){ var d=CON.docs&&CON.docs[f]; if(!d||!d.sid||!CON.tareas) return ""; for(var i=0;i<CON.tareas.length;i++){ if(CON.tareas[i].d.sid===d.sid) return CON.tareas[i].d.fecha||""; } return ""; }
 /* {doc, motivo} de los documentos planillados que parecen volver a enviar y aun no se han confirmado */
 function candidatosReenvio(){
+  if(typeof dfAuto==="function") dfAuto();
   var co=coActual(), re=reenvDe(), out={}, orden=[];
-  (S.desp.planillas||[]).forEach(function(pl){ if(pl.revision||(pl.co&&pl.co!==co)) return;
+  (S.desp.planillas||[]).forEach(function(pl){ if(pl.revision||(pl.co&&pl.co!==co)) return; if(DF.fecha&&pl.fecha!==DF.fecha) return;
     pl.facs.forEach(function(f){ if(re[f]||out[f]) return;
       var mot="", sf=sesFechaDe(f); if(sf&&pl.fecha&&sf<pl.fecha) mot="se separó el "+sf;
       if(!mot){ var h=(CON.hist||[]).filter(function(x){ return x.sid!=="D"+pl.num&&(x.docs||[]).indexOf(f)>=0; })[0]; if(h) mot="ya salió en otro cargue ("+h.sid.replace(/^D/,"")+")"; }
@@ -2660,7 +2665,7 @@ function confirmarReenvios(despues){
 }
 ACT.revreenv=function(){ confirmarReenvios(); };
 function reenvioHtml(){
-  var c=candidatosReenvio(), re=Object.keys(reenvDe()).filter(function(f){ return (S.desp.planillas||[]).some(function(p){ return p.facs.indexOf(f)>=0; }); }), h="";
+  var c=candidatosReenvio(), re=Object.keys(reenvDe()).filter(function(f){ return (S.desp.planillas||[]).some(function(p){ return (!DF.fecha||p.fecha===DF.fecha)&&p.facs.indexOf(f)>=0; }); }), h="";
   if(c.length) h+='<div class="hint warn" style="margin-top:6px"><b>'+c.length+' documento'+(c.length>1?'s':'')+' parece'+(c.length>1?'n':'')+' volver a enviar</b> (de días anteriores o ya despachado'+(c.length>1?'s':'')+'). <button class="btn ghost sm" data-act="revreenv">Revisar</button></div>';
   if(re.length) h+='<div class="hint" style="margin-top:6px"><b>'+re.length+' documento'+(re.length>1?'s':'')+' marcado'+(re.length>1?'s':'')+' «volver a enviar»</b>: se despachan sin exigir el alistamiento de hoy.</div>';
   return h;
@@ -3434,8 +3439,13 @@ ACT.pubuno=async function(el,d){
   if(!confirmarSep(cal)) return;
   try{ var n=await publicarPl(cal[0],""); toast(n?"Vehículo "+cal[0].pl.placa+" publicado: disponible para los auxiliares":"No se publicó: "+(PUB_MOTIVO||"sin cambios")); await cargarDesp(); render(); }catch(e){ toast("No se pudo publicar: "+(e.message||e)); }
 };
+/* Por defecto Despacho muestra y analiza SOLO el día de hoy (o el último día con planillas); «Todas las fechas» lo amplía */
+function dfAuto(){
+  if(DF.user) return; var co=coActual(), h=hoy(), fs=(S.desp.planillas||[]).filter(function(p){ return (!p.co||p.co===co)&&!p.revision; }).map(function(p){ return p.fecha; }).sort();
+  DF.fecha=fs.indexOf(h)>=0?h:(fs.length?fs[fs.length-1]:"");
+}
 VIEWS.desp=function(){
-  topbar("Despacho",subtituloUsuario(),true);
+  topbar("Despacho",subtituloUsuario(),true); dfAuto();
   var D=S.desp, co=coActual(), propias=D.planillas.filter(function(p){ return !p.co||p.co===co; }), mi=Object.keys(S.mae).length;
   var h=selectorCiudad("dpco")+'<div class="row" style="margin:4px 0 8px"><h1 class="grow" style="margin:0">Despacho</h1><button class="btn gold sm" data-act="cargapla">+ Cargar planilla</button><button class="btn ghost sm" data-act="dsdatos">Datos '+(DS.datos?'▴':'▾')+'</button></div>';
   if(DS.datos) h+='<div class="card"><div class="row"><span class="chip ok">'+propias.length+' planillas</span><span class="chip ok">'+nf(Object.keys(D.lineas).length)+' documentos con líneas</span></div><p class="small muted">Las líneas se toman solas de las sesiones de alistamiento. Carga un Excel de factura o remisión solo si falta alguno.</p>'+
@@ -3444,17 +3454,18 @@ VIEWS.desp=function(){
   h+=cierreHtml();
   var cal=planillasCalc(), tareasEmp={};
   cal.forEach(function(c){ var t=tareaDePlanilla(c.pl); if(t) tareasEmp[t.id]=1; });
-  var huer=Object.keys(DP.tareas).map(function(k){ return DP.tareas[k]; }).filter(function(t){ return t.datos.modulo==="despacho"&&!tareasEmp[t.id]; });
+  var huer=Object.keys(DP.tareas).map(function(k){ return DP.tareas[k]; }).filter(function(t){ return t.datos.modulo==="despacho"&&!tareasEmp[t.id]&&(!DF.fecha||!t.datos.fecha||t.datos.fecha===DF.fecha); });
   if(!cal.length&&!huer.length){
     h+='<div class="card gold" style="text-align:center"><b>Empieza cargando la planilla del ERP</b><p class="small muted">Verás cada vehículo como una tarjeta: capacidad, alertas del alistamiento y estado del cargue. Desde ahí lo publicas a los auxiliares.</p><button class="btn gold" data-act="cargapla">Cargar planilla (Excel)</button></div>';
     app(h); return;
   }
   /* contadores */
-  var n={todos:cal.length,pub:0,libre:0,curso:0,fin:0,alert:0}; cal.forEach(function(c){ n[dsEstado(c)]++; if(dsAlertas(c).length) n.alert++; });
+  var calF=cal.filter(function(c){ return !DF.fecha||c.pl.fecha===DF.fecha; });
+  var n={todos:calF.length,pub:0,libre:0,curso:0,fin:0,alert:0}; calF.forEach(function(c){ n[dsEstado(c)]++; if(dsAlertas(c).length) n.alert++; });
   var chips=[["todos","Todos"],["pub","Por publicar"],["libre","Sin tomar"],["curso","En carga"],["fin","Terminados"],["alert","⚠ Alertas"]];
   h+='<div class="kfil">'+chips.map(function(x){ return '<button class="kf '+(DS.est===x[0]?'sel':'')+(x[0]==="alert"&&n.alert?' hot':'')+'" data-act="dsest" data-e="'+x[0]+'"><b>'+n[x[0]]+'</b><span>'+x[1]+'</span></button>'; }).join("")+'</div>';
   var fechas=uniq(cal.map(function(c){ return c.pl.fecha; })).sort();
-  h+='<div class="row" style="margin:8px 0"><input type="search" id="dsq" class="grow" placeholder="Buscar placa, conductor, planilla o factura" value="'+esc(DS.q)+'">'+(fechas.length>1?'<select id="dsf" class="compact"><option value="">Todas las fechas</option>'+fechas.map(function(f){ return '<option value="'+f+'"'+(DF.fecha===f?' selected':'')+'>'+f.slice(5)+'</option>'; }).join("")+'</select>':'')+'</div>';
+  h+='<div class="row" style="margin:8px 0"><input type="search" id="dsq" class="grow" placeholder="Buscar placa, conductor, planilla o factura" value="'+esc(DS.q)+'">'+(fechas.length>1||DF.fecha?'<select id="dsf" class="compact"><option value="*"'+(DF.fecha?'':' selected')+'>Todas las fechas</option>'+fechas.map(function(f){ return '<option value="'+f+'"'+(DF.fecha===f?' selected':'')+'>'+(f===hoy()?'Hoy · ':'')+f.slice(5)+'</option>'; }).join("")+'</select>':'')+'</div>';
   /* conciliacion resumida */
   var cc=conciliar(), nAl=cc?cc.sinPlanilla.length+cc.sinAlistar.length+(cc.dif.length?1:0):0, rv=candidatosReenvio().length;
   if(cc){ h+='<div class="hint '+((nAl||rv)?'warn':'')+'" style="margin:0 0 8px;'+((nAl||rv)?'':'border-color:#2e7d32')+'"><div class="row"><span class="grow">'+((nAl||rv)?'<b>Revisión del alistamiento:</b> '+(cc.sinAlistar.length?cc.sinAlistar.length+' sin separar · ':'')+(cc.sinPlanilla.length?cc.sinPlanilla.length+' separados sin planilla · ':'')+(cc.dif.length?'cantidades distintas · ':'')+(rv?rv+' por volver a enviar':''):'<b>Conciliación al día:</b> lo separado coincide con las planillas.')+'</span>'+((nAl||rv)?'<button class="btn ghost sm" data-act="dsconc">'+(DS.conc?'Ocultar':'Ver detalle')+'</button>':'')+'</div></div>'; if(DS.conc&&(nAl||rv)) h+=reenvioHtml()+conciliacionBase(); }
@@ -3473,7 +3484,7 @@ VIEWS.desp=function(){
   if(nsel){ var ops=usuariosDe(co,"operario"); h+='<div class="selbar"><b>'+nsel+' elegido'+(nsel>1?'s':'')+'</b><select id="selsel" class="grow"><option value="">Disponible para cualquier auxiliar</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">Asignar a '+esc(u.nombre)+'</option>'; }).join("")+'</select>'+(nsel>1?'<button class="btn ghost sm" data-act="unirpl">Unir '+nsel+'</button>':'')+'<button class="btn gold sm" data-act="enviarsel">Publicar '+nsel+'</button><button class="btn ghost sm" data-act="selplnada">✕</button></div>'; }
   app(h);
   enlazarBuscador("dsq",function(v){ DS.q=v; });
-  var sf=$("#dsf"); if(sf) sf.onchange=function(){ DF.fecha=sf.value; render(); };
+  var sf=$("#dsf"); if(sf) sf.onchange=function(){ DF.user=true; DF.fecha=sf.value==="*"?"":sf.value; render(); };
 };
 
 /* ===== 66b_limpieza.js ===== */
