@@ -1931,9 +1931,12 @@ ACT.vhplaca=function(el,d){ hojaVehiculo(d("p")); };
 
 /* ===== 60_ops.js ===== */
 /* ---------- tareas: consultas livianas (sin la lista de referencias) ---------- */
-var TASK_LITE="id,sid:datos->>sid,modulo:datos->>modulo,titulo:datos->>titulo,co:datos->>co,fecha:datos->>fecha,asignadoId:datos->>asignadoId,asignadoNombre:datos->>asignadoNombre,estado:datos->>estado,total:datos->>total,ok:datos->>ok,parc:datos->>parc,no:datos->>no,creadoEn:datos->>creadoEn,actualizadoEn:datos->>actualizadoEn,placa:datos->>placa,planillas:datos->>planillas";
+var TASK_LITE="id,sid:datos->>sid,modulo:datos->>modulo,titulo:datos->>titulo,co:datos->>co,fecha:datos->>fecha,asignadoId:datos->>asignadoId,asignadoNombre:datos->>asignadoNombre,estado:datos->>estado,total:datos->>total,ok:datos->>ok,parc:datos->>parc,no:datos->>no,creadoEn:datos->>creadoEn,actualizadoEn:datos->>actualizadoEn,placa:datos->>placa,planillas:datos->>planillas,archivada:datos->>archivada";
 async function tareasDe(filter,o){
-  var rows=await DB.list("ops_tareas",Object.assign({filter:filter,all:true,order:"actualizado.desc",select:TASK_LITE},o||{}));
+  var op=Object.assign({},o||{}), conArch=!!op.conArch; delete op.conArch;
+  var rows=await DB.list("ops_tareas",Object.assign({filter:filter,all:true,order:"actualizado.desc",select:TASK_LITE},op));
+  /* lo archivado, y el alistamiento pendiente de sesiones fuera de la ventana de días, no se mezcla con lo de hoy */
+  if(!conArch) rows=rows.filter(function(r){ return r.archivada!=="true"&&!(r.modulo==="alistamiento"&&r.estado!=="completada"&&typeof sesVigente==="function"&&!sesVigente(r.sid)); });
   return rows.map(function(r){ var d={modulo:r.modulo,sid:r.sid,titulo:r.titulo,co:r.co,fecha:r.fecha,asignadoId:r.asignadoId||"",asignadoNombre:r.asignadoNombre,estado:r.estado,total:+r.total||0,ok:+r.ok||0,parc:+r.parc||0,no:+r.no||0,creadoEn:r.creadoEn,actualizadoEn:r.actualizadoEn,placa:r.placa||"",planillas:(function(){ try{ return r.planillas?JSON.parse(r.planillas):[]; }catch(e){ return []; } })()}; return {id:r.id,datos:d}; });
 }
 function tareaDoc(modulo,sid,titulo,co,aux,items,extra){
@@ -1947,9 +1950,10 @@ var AL={sesiones:[],tareas:[],cargando:false,err:""};
 async function cargarAli(){
   var co=coActual(); AL.cargando=true; AL.err="";
   try{
+    await histCargar(co);
     var ses=await DB.list("ops_sesiones",{filter:{"datos->>co":"eq."+co},all:true,order:"actualizado.desc"});
-    AL.sesiones=ses.map(function(r){ return {id:r.id,datos:r.datos}; }).slice(0,40);
-    AL.tareas=await tareasDe({"datos->>co":"eq."+co,"datos->>modulo":"eq.alistamiento"});
+    AL.sesiones=ses.map(function(r){ return {id:r.id,datos:r.datos}; }).slice(0,80);
+    AL.tareas=await tareasDe({"datos->>co":"eq."+co,"datos->>modulo":"eq.alistamiento"},{conArch:true});
   }catch(e){ AL.err=e.message||"Sin conexión"; }
   AL.cargando=false; var c=cur(); if(c&&c.v==="ali") render();
 }
@@ -1957,14 +1961,17 @@ VIEWS.ali=function(){
   topbar("Alistamiento",subtituloUsuario(),true);
   var h=selectorCiudad("alco")+'<div class="row"><h1 class="grow" style="margin:6px 0">Alistamiento</h1><button class="btn gold sm" data-act="alnueva">+ Nueva sesión</button></div>';
   if(AL.err) h+='<div class="hint warn">'+esc(AL.err)+'</div>';
-  if(!AL.sesiones.length) h+='<div class="empty">'+(AL.cargando?"Cargando sesiones…":"Aún no hay sesiones. Cree una cargando los Excel del día.")+'</div>';
-  AL.sesiones.forEach(function(s){
+  h+=histPanelHtml();
+  var visibles=AL.sesiones.filter(function(s){ return HIST.ver?!!HIST.arch[s.id]:!HIST.arch[s.id]; });
+  if(!visibles.length) h+='<div class="empty">'+(AL.cargando?"Cargando sesiones…":HIST.ver?"No hay sesiones archivadas.":"Aún no hay sesiones. Cree una cargando los Excel del día.")+'</div>';
+  visibles.forEach(function(s){
     var d=s.datos, ts=AL.tareas.filter(function(t){ return t.datos.sid===s.id; }), tot=0, hec=0, comp=0;
     ts.forEach(function(t){ tot+=t.datos.total; hec+=t.datos.ok+t.datos.parc+t.datos.no; if(t.datos.estado==="completada") comp++; });
     var est=ts.length&&comp===ts.length?"completada":hec>0?"en_curso":"pendiente";
-    h+='<button class="task '+(est==="completada"?"ok":est==="en_curso"?"curso":"")+'" data-act="abrirses" data-id="'+esc(s.id)+'"><div class="tt"><b>'+esc(d.titulo)+'</b>'+estadoChip(est)+'</div><div class="sub">'+esc(s.id)+' · '+esc(d.fecha)+' · '+nf(d.totalRefs)+' referencias · '+nf(d.totalUnidades)+' unidades</div>'+barra(tot?hec/tot:0,true)+'<div class="mini"><span class="chip">'+hec+' de '+tot+'</span><span class="chip">'+ts.length+' tareas</span></div></button>';
+    h+='<button class="task '+(est==="completada"?"ok":est==="en_curso"?"curso":"")+'" data-act="abrirses" data-id="'+esc(s.id)+'"><div class="tt"><b>'+esc(d.titulo)+'</b>'+(sesMotivo(s.id)==="anterior"?'<span class="chip">Ignorada · anterior</span> ':'')+(sesMotivo(s.id)==="archivada"?'<span class="chip">Archivada</span> ':'')+estadoChip(est)+'</div><div class="sub">'+esc(s.id)+' · '+esc(d.fecha)+' · '+nf(d.totalRefs)+' referencias · '+nf(d.totalUnidades)+' unidades</div>'+barra(tot?hec/tot:0,true)+'<div class="mini"><span class="chip">'+hec+' de '+tot+'</span><span class="chip">'+ts.length+' tareas</span></div></button>';
   });
   app(h);
+  var hs=$("#histsel"); if(hs) hs.onchange=ACT.histdias;
 };
 ACT.alnueva=function(){ NUEVA={}; go("nueva"); };
 ACT.abrirses=function(el,d){ SESV={id:d("id"),cargando:true,err:"",ses:null,tareas:[]}; go("ses"); cargarSes(); };
@@ -2065,7 +2072,7 @@ async function crearSesionDe(N,detalle){
 var SESV={id:"",cargando:false,err:"",ses:null,tareas:[]};
 async function cargarSes(){
   SESV.cargando=!SESV.ses; SESV.err="";
-  try{ var r=await DB.get("ops_sesiones",SESV.id); SESV.ses=r?r.datos:null; SESV.tareas=await tareasDe({"datos->>sid":"eq."+SESV.id}); }
+  try{ var r=await DB.get("ops_sesiones",SESV.id); SESV.ses=r?r.datos:null; SESV.tareas=await tareasDe({"datos->>sid":"eq."+SESV.id},{conArch:true}); }
   catch(e){ SESV.err=e.message||"Sin conexión"; }
   SESV.cargando=false; var c=cur(); if(c&&c.v==="ses") render();
 }
@@ -2082,7 +2089,7 @@ VIEWS.ses=function(){
     h+='<div class="card gold"><b>Sin asignar</b> · '+sin.datos.total+' referencias<p class="small muted">No están en la matriz de este C.O. o su auxiliar no está activo.</p><button class="btn ghost sm" data-act="versin">Ver las '+sin.datos.total+' referencias</button><div class="sp"></div><div class="row"><select id="sasel" class="grow"><option value="">— Elegir auxiliar —</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">'+esc(u.nombre)+'</option>'; }).join("")+'</select><button class="btn sm" data-act="asignarsin">Asignar todas</button></div></div>';
   }
   h+='<h2>Tareas</h2>'+SESV.tareas.filter(function(t){ return t.datos.asignadoId; }).sort(function(a,b){ return String(a.datos.asignadoNombre).localeCompare(String(b.datos.asignadoNombre)); }).map(function(t){ return tareaHtml(t,'data-act="vertarea" data-id="'+esc(t.id)+'"'); }).join("");
-  h+='<div class="sp"></div><button class="btn red sm" data-act="eliminarses">Eliminar sesión</button>';
+  h+='<div class="sp"></div><div class="row">'+(esCoord()?'<button class="btn ghost sm" data-act="sesarch">'+(HIST.arch[SESV.id]?'Restaurar sesión':'Archivar sesión')+'</button>':'')+'<button class="btn red sm" data-act="eliminarses">Eliminar sesión</button></div>';
   app(h);
 };
 /* Escribe en la matriz del C.O. (la misma de Semaforos): crea la linea si no existe o actualiza el auxiliar si ya existe */
@@ -2167,12 +2174,12 @@ async function cargarDesp(){
 /* El cargue que contiene a una planilla (sola o unida con otras del mismo vehiculo) */
 function tareaDePlanilla(pl){
   var k=Object.keys(DP.tareas), et=etiquetaPl(pl);
-  for(var i=0;i<k.length;i++){ var t=DP.tareas[k[i]], ps=t.datos.planillas||[]; if(t.datos.sid==="D"+pl.num||ps.indexOf(et)>=0) return t; }
+  for(var i=0;i<k.length;i++){ var t=DP.tareas[k[i]], ps=t.datos.planillas||[]; if(t.datos.sid==="D"+pl.num||ps.indexOf(et)>=0||(pl.orig&&pl.orig.some(function(o){ return ps.indexOf(etiquetaPl(o))>=0; }))) return t; }
   return null;
-}function etiquetaPl(pl){ return /^(PLI|PLF|REV)/i.test(String(pl.num))?String(pl.num):(pl.tipo||'PLF')+' '+pl.num; }
+}function etiquetaPl(pl){ if(pl.orig&&pl.orig.length) return pl.orig.map(etiquetaPl).join(" + "); return /^(PLI|PLF|REV)/i.test(String(pl.num))?String(pl.num):(pl.tipo||'PLF')+' '+pl.num; }
 /* Lineas de los documentos que ya se cargaron en el alistamiento (sesiones de la ciudad) */
 async function traerDocs(){
-  var co=coActual(), rs=await DB.list("ops_docs",{filter:{"datos->>co":"eq."+co},all:true}), n=0; S.desp.clientes=S.desp.clientes||{};
+  var co=coActual(); await histCargar(co); var rs=await DB.list("ops_docs",{filter:{"datos->>co":"eq."+co},all:true}), n=0; S.desp.clientes=S.desp.clientes||{};
   CON.docs={}; rs.forEach(function(r){ CON.docs[r.id]=r.datos||{}; });
   S.desp.src=S.desp.src||{}; Object.keys(S.desp.lineas).forEach(function(k){ if(!CON.docs[k]&&S.desp.src[k]!=="xls"){ delete S.desp.lineas[k]; delete S.desp.clientes[k]; n++; } });
   rs.forEach(function(r){ var d=r.datos||{}, k=r.id; if(d.cli) S.desp.clientes[k]=d.cli; if(S.desp.lineas[k]) return;
@@ -2416,7 +2423,7 @@ async function publicarPl(cal,aux){
   }
   var items=cal.items.map(function(i){ return Object.assign({},i,{tipos:"FAC",seq:0,zona:"",cemp:avisoEmpaque(i.ref)}); });
   var cl=S.desp.clientes||{}, facturas=pl.facs.filter(function(f){ return S.desp.lineas[f]; }).map(function(f){ return {n:f,c:(reenvDe()[f]?"[VOLVER A ENVIAR] ":"")+(cl[f]||""),l:S.desp.lineas[f]}; });
-  var doc=tareaDoc("despacho",sid,(pl.revision?"Verificación de lo separado y no despachado · ":"Cargue "+pl.placa+" · ")+(pl.revision?pl.num:etiquetaPl(pl)),co,aux,items,{docsN:pl.facs,placa:pl.placa,planilla:pl.num,planillas:[etiquetaPl(pl)],facturas:facturas,modo:""});
+  var doc=tareaDoc("despacho",sid,(pl.revision?"Verificación de lo separado y no despachado · ":"Cargue "+pl.placa+" · ")+(pl.revision?pl.num:etiquetaPl(pl)),co,aux,items,{docsN:pl.facs,placa:pl.placa,planilla:pl.num,planillas:(pl.orig&&pl.orig.length?pl.orig.map(etiquetaPl):[etiquetaPl(pl)]),facturas:facturas,modo:""});
   await DB.set("ops_tareas",doc.id,doc.datos); return 1;
 }
 function barraSeleccionHtml(cal){
@@ -2448,7 +2455,7 @@ function conciliar(){
   var co=coActual(), pls=(S.desp.planillas||[]).filter(function(p){ return (!p.co||p.co===co)&&!p.revision; });
   if(!pls.length) return null;
   var enPl={}, ord=[]; pls.forEach(function(p){ p.facs.forEach(function(f){ if(!enPl[f]){ enPl[f]=p; ord.push(f); } }); });
-  var sinPlanilla=Object.keys(CON.docs).filter(function(k){ return !enPl[k]; });
+  var sinPlanilla=Object.keys(CON.docs).filter(function(k){ return !enPl[k]&&docVigente(k); });
   var sinAlistar=ord.filter(function(f){ return !CON.docs[f]&&!reenvDe()[f]; });
   var dif=[];
   ord.forEach(function(f){
@@ -2467,7 +2474,7 @@ function confirmarFaltantes(){
   var c=conciliar(); if(!c){ return; }
   var ack=ackDe(), nuevos=c.sinPlanilla.filter(function(k){ return !ack[k]; });
   if(!nuevos.length){ avisoConciliacion(); return; }
-  var tot=Object.keys(CON.docs).length, plan=tot-c.sinPlanilla.length;
+  var tot=Object.keys(CON.docs).filter(docVigente).length, plan=tot-c.sinPlanilla.length;
   var bg=abrirSheet('<h3>Faltan documentos en la planilla</h3><p>En el alistamiento se separaron <b>'+nf(tot)+' documentos</b> y solo <b>'+nf(plan)+'</b> están en las planillas. <b>Faltan '+nf(nuevos.length)+'</b>:</p><p class="small">'+listaDocs(nuevos,15)+'</p><p><b>¿Seguimos con el despacho así?</b></p><button class="btn gold block" id="cfSi">Sí, seguir con el despacho</button><div class="sp"></div><button class="btn ghost block" id="cfNo">No, voy a revisar la planilla</button><p class="small muted">Si sigues, al terminar el despacho la app te preguntará si quieres generar una orden de verificación de lo que se separó y no se despachó.</p>');
   $("#cfSi",bg).onclick=function(){ nuevos.forEach(function(k){ ack[k]=1; }); LS.set("ops_desp",S.desp); cerrarSheet(); toast("Seguimos con el despacho. Al final podrás generar la verificación.",4000); render(); };
   $("#cfNo",bg).onclick=function(){ cerrarSheet(); toast("Corrige la planilla y vuelve a cargarla; el aviso sigue visible en Despacho.",5000); render(); };
@@ -2674,6 +2681,9 @@ async function cargarEnr(){
     ER.docs={}; ds.forEach(function(r){ ER.docs[r.id]=r.datos||{}; }); CON.docs=ER.docs; ER.m={};
     var rs=await DB.list("ops_rutas",{filter:{"datos->>co":"eq."+co},all:true});
     ER.rutas=rs.map(function(r){ return {id:r.id,d:r.datos||{}}; }).sort(function(a,b){ return String(b.d.fecha).localeCompare(String(a.d.fecha))||String(a.d.placa).localeCompare(String(b.d.placa)); });
+    await histCargar(co);
+    /* el enrutador solo ofrece documentos de sesiones vigentes (o los que ya están en una ruta) */
+    ER.docs=(function(){ var o={}; Object.keys(ER.docs).forEach(function(k){ if(sesVigente(ER.docs[k].sid)||docEnRuta(k)) o[k]=ER.docs[k]; }); return o; })(); CON.docs=ER.docs;
     await cargarTareasAli();
     var ts=await tareasDe({"datos->>co":"eq."+co,"datos->>modulo":"eq.despacho"}); DP.tareas={}; ts.forEach(function(t){ DP.tareas[t.datos.sid]=t; });
   }catch(e){ ER.err=e.message||"Sin conexión"; }
@@ -3378,7 +3388,9 @@ function dsTarjeta(c,i,libres){
   if(al.length) h+='<div class="va">'+al.map(function(a){ return '<span class="chip '+a.cls+'">⚠ '+esc(a.t)+'</span>'; }).join("")+(al.some(function(a){ return a.placa; })?' <button class="btn ghost sm" data-act="vhplaca" data-p="'+esc(pl.placa)+'">Completar</button>':'')+'</div>';
   if(tk){ var d=tk.datos, hh=(d.ok||0)+(d.parc||0)+(d.no||0); h+='<div class="vc"><div class="bar big"><i style="width:'+Math.round((d.total?hh/d.total:0)*100)+'%"></i></div><span class="small">'+(d.asignadoId?'Carga: <b>'+esc(d.asignadoNombre||"")+'</b>':'Esperando a un auxiliar')+' · '+hh+'/'+(d.total||0)+'</span></div>'; }
   h+='<div class="vb">';
-  if(lis) h+='<button class="btn gold sm" data-act="pubuno" data-n="'+esc(pl.num)+'">Publicar</button>';
+  if(lis) h+='<button class="btn gold sm" data-act="pubuno" data-n="'+esc(pl.num)+'">Publicar</button><button class="btn ghost sm" data-act="cargoyo" data-n="'+esc(pl.num)+'">Cargar yo</button>';
+  if(tk&&(e==="libre"||(e==="curso"&&tk.datos.asignadoId===S.me.id))) h+='<button class="btn gold sm" data-act="tomarveh" data-id="'+esc(tk.id)+'">'+(e==="libre"?"Cargar yo":"Continuar mi cargue")+'</button>';
+  if(pl.orig&&!tk) h+='<button class="btn ghost sm" data-act="desunirpl" data-n="'+esc(pl.num)+'">Separar</button>';
   h+='<button class="btn ghost sm" data-act="abrirpl" data-i="'+i+'">Abrir</button>';
   if(tk&&e==="libre"&&libres>1) h+='<button class="btn ghost sm" data-act="unitog" data-id="'+esc(tk.id)+'">'+(UNI.sel[tk.id]?'☑ Unir':'☐ Unir')+'</button>';
   if(tk) h+='<button class="btn ghost sm" style="color:#c0392b;border-color:#c0392b" data-act="eliminarcargue" data-id="'+esc(tk.id)+'">'+(e==="fin"?"Quitar":"Eliminar cargue")+'</button>';
@@ -3388,6 +3400,35 @@ ACT.dsest=function(el,d){ DS.est=d("e"); render(); };
 ACT.dsdatos=function(){ DS.datos=!DS.datos; render(); };
 ACT.dsconc=function(){ DS.conc=!DS.conc; render(); };
 ACT.dsseltodos=function(){ var cal=planillasCalc(); dsFiltrar(cal).forEach(function(c){ if(dsListos(c)) SELP[c.pl.num]=1; }); render(); };
+/* El coordinador, supervisor o administrador también carga: publica el vehículo a su nombre y lo abre */
+ACT.cargoyo=async function(el,d){
+  var cal=planillasCalc().filter(function(c){ return c.pl.num===d("n"); }); if(!cal.length) return;
+  if(!confirmarSep(cal)) return;
+  try{ var n=await publicarPl(cal[0],S.me.id); if(!n){ toast("No se publicó: "+(PUB_MOTIVO||"sin cambios")); return; }
+    var id="D"+cal[0].pl.num+"--"+S.me.id; await abrirTarea(id,false); }
+  catch(e){ toast("No se pudo: "+(e.message||e),5000); }
+};
+/* ===== Unir planillas del mismo vehículo (p. ej. PLF + PLI) ANTES de publicar: primero se unen, luego se publica una sola vez ===== */
+ACT.unirpl=function(){
+  var cal=planillasCalc().filter(function(c){ return SELP[c.pl.num]&&dsListos(c)&&!c.pl.revision; });
+  if(cal.length<2){ toast("Elige al menos dos planillas por publicar para unirlas"); return; }
+  var ps=cal.map(function(c){ return c.pl; }), placas=uniq(ps.map(function(p){ return p.placa; }));
+  if(placas.length>1&&!confirm("Estas planillas tienen placas distintas ("+placas.join(", ")+"). ¿Unirlas de todos modos?")) return;
+  var facs=[]; ps.forEach(function(p){ p.facs.forEach(function(f){ if(facs.indexOf(f)<0) facs.push(f); }); });
+  var m={num:"UNI-"+ps.map(function(p){ return String(p.num); }).join("+"),tipo:"UNI",co:ps[0].co||coActual(),fecha:ps.map(function(p){ return p.fecha; }).sort()[0],placa:placas[0],facs:facs,orig:JSON.parse(JSON.stringify(ps)),uni:true};
+  var nums=ps.map(function(p){ return p.num; });
+  S.desp.planillas=(S.desp.planillas||[]).filter(function(p){ return !(nums.indexOf(p.num)>=0&&(!p.co||p.co===m.co)); }).concat([m]);
+  S.desp.planillas.sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:String(x.num).localeCompare(String(y.num),undefined,{numeric:true}); });
+  SELP={}; SELP[m.num]=1; LS.set("ops_desp",S.desp);
+  toast("Planillas unidas: "+etiquetaPl(m)+". Revisa la capacidad y publícalas como un solo cargue.",5000); render();
+};
+ACT.desunirpl=function(el,d){
+  var m=(S.desp.planillas||[]).filter(function(p){ return p.num===d("n")&&p.orig; })[0]; if(!m) return;
+  if(tareaDePlanilla(m)){ toast("Ya está publicado: elimina el cargue primero"); return; }
+  S.desp.planillas=S.desp.planillas.filter(function(p){ return p!==m; }).concat(m.orig);
+  S.desp.planillas.sort(function(x,y){ return x.fecha<y.fecha?-1:x.fecha>y.fecha?1:String(x.num).localeCompare(String(y.num),undefined,{numeric:true}); });
+  delete SELP[m.num]; LS.set("ops_desp",S.desp); toast("Planillas separadas de nuevo"); render();
+};
 ACT.pubuno=async function(el,d){
   var cal=planillasCalc().filter(function(c){ return c.pl.num===d("n"); }); if(!cal.length) return;
   if(!confirmarSep(cal)) return;
@@ -3429,7 +3470,7 @@ VIEWS.desp=function(){
   if(huer.length&&(DS.est==="todos"||DS.est==="curso"||DS.est==="fin")) h+='<h2>Otros cargues publicados ('+huer.length+')</h2><p class="small muted">Publicados desde otro dispositivo o de días anteriores: ya no tienen su planilla cargada aquí.</p>'+huer.map(function(t){ var d=t.datos, hh=(d.ok||0)+(d.parc||0)+(d.no||0); return '<div class="vh '+(d.estado==="completada"?"fin":d.asignadoId?"curso":"libre")+'"><div class="vt"><div class="grow"><b>'+esc(d.titulo)+'</b></div>'+estadoChip(d.estado||"pendiente")+'</div><div class="vs">'+esc(d.fecha||"")+' · '+esc(d.asignadoNombre||"Sin asignar")+' · '+hh+'/'+(d.total||0)+'</div><div class="vb"><button class="btn ghost sm" style="color:#c0392b;border-color:#c0392b" data-act="eliminarcargue" data-id="'+esc(t.id)+'">Eliminar</button></div></div>'; }).join("");
   /* barra fija de publicacion */
   var nsel=cal.filter(function(c){ return SELP[c.pl.num]&&dsListos(c); }).length;
-  if(nsel){ var ops=usuariosDe(co,"operario"); h+='<div class="selbar"><b>'+nsel+' elegido'+(nsel>1?'s':'')+'</b><select id="selsel" class="grow"><option value="">Disponible para cualquier auxiliar</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">Asignar a '+esc(u.nombre)+'</option>'; }).join("")+'</select><button class="btn gold sm" data-act="enviarsel">Publicar '+nsel+'</button><button class="btn ghost sm" data-act="selplnada">✕</button></div>'; }
+  if(nsel){ var ops=usuariosDe(co,"operario"); h+='<div class="selbar"><b>'+nsel+' elegido'+(nsel>1?'s':'')+'</b><select id="selsel" class="grow"><option value="">Disponible para cualquier auxiliar</option>'+ops.map(function(u){ return '<option value="'+esc(u.id)+'">Asignar a '+esc(u.nombre)+'</option>'; }).join("")+'</select>'+(nsel>1?'<button class="btn ghost sm" data-act="unirpl">Unir '+nsel+'</button>':'')+'<button class="btn gold sm" data-act="enviarsel">Publicar '+nsel+'</button><button class="btn ghost sm" data-act="selplnada">✕</button></div>'; }
   app(h);
   enlazarBuscador("dsq",function(v){ DS.q=v; });
   var sf=$("#dsf"); if(sf) sf.onchange=function(){ DF.fecha=sf.value; render(); };
@@ -3501,6 +3542,78 @@ async function despNubePull(){
 async function despCompletarLocal(){
   var co=coActual(), D=S.desp; var falta=!CON.docs||(D.planillas||[]).some(function(p){ return (!p.co||p.co===co)&&(p.facs||[]).some(function(f){ return !D.lineas[f]; }); });
   if(falta){ try{ await traerDocs(); await cargarTareasAli(); }catch(e){} }
+}
+
+/* ===== 66d_historico.js ===== */
+/* ====================== HISTÓRICO: las sesiones viejas no se mezclan con las de hoy ======================
+   Dos mecanismos:
+   1) Ventana automática (HIST.dias, por defecto 3): las sesiones de alistamiento con más días quedan IGNORADAS en la revisión
+      del despacho (separados sin planilla), en el Enrutador y en «Mis tareas» de los auxiliares. No se borra nada.
+   2) Archivar (a mano o en bloque): la sesión sale de las listas y de todos los conteos, pero se conserva y se puede restaurar.
+      Eliminar sigue existiendo (borra la sesión con sus tareas y documentos).
+   Los documentos viejos se conservan para consultar líneas y detectar reenvíos; solo dejan de contarse como «separados sin planilla». */
+var HIST={dias:+(LS.raw("ops_histdias")||3)||3,arch:{},ver:false,co:""};
+function histLimite(){ var d=new Date(); d.setDate(d.getDate()-HIST.dias); return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }
+function sesVigente(sid){ if(HIST.arch[sid]) return false; var f=fechaDeSid(sid); return !f||f>=histLimite(); }
+function docVigente(k){ var d=CON.docs&&CON.docs[k]; return !d||sesVigente(d.sid); }
+function sesMotivo(sid){ return HIST.arch[sid]?"archivada":(sesVigente(sid)?"":"anterior"); }
+async function histCargar(co){
+  try{ var r=await DB.get("config","historico"); if(r&&r.datos&&+r.datos.dias>0){ HIST.dias=+r.datos.dias; LS.setRaw("ops_histdias",String(HIST.dias)); } }catch(e){}
+  try{ var rs=await DB.list("ops_sesiones",{filter:{"datos->>co":"eq."+co,"datos->>archivada":"eq.true"},all:true,select:"id"}); HIST.arch={}; rs.forEach(function(x){ HIST.arch[x.id]=1; }); HIST.co=co; }catch(e){}
+}
+ACT.histdias=async function(){
+  var sel=$("#histsel"); if(!sel) return; var n=+sel.value; if(!(n>0)) return; HIST.dias=n; LS.setRaw("ops_histdias",String(n));
+  try{ await DB.set("config","historico",{dias:n,por:S.me.id,en:ahora()}); }catch(e){ toast("Se aplicó en este equipo; no se pudo guardar para los demás: "+(e.message||e),5000); }
+  toast("Se ignoran las sesiones de más de "+n+" día"+(n>1?"s":"")); render();
+};
+ACT.alver=function(){ HIST.ver=!HIST.ver; render(); };
+async function archivarSes(id,v){
+  await DB.patch("ops_sesiones",id,{archivada:v?true:false,archivadaEn:v?ahora():""});
+  var ts=await DB.list("ops_tareas",{filter:{"datos->>sid":"eq."+id},all:true,select:"id"});
+  for(var i=0;i<ts.length;i++){ try{ await DB.patch("ops_tareas",ts[i].id,{archivada:v?true:false}); }catch(e){} }
+  if(v) HIST.arch[id]=1; else delete HIST.arch[id];
+}
+async function archivarVarias(ids,v){
+  var n=0, fallos=0; for(var i=0;i<ids.length;i++){ try{ await archivarSes(ids[i],v); n++; }catch(e){ fallos++; } }
+  toast((v?"Archivadas: ":"Restauradas: ")+n+(fallos?" · "+fallos+" no se pudieron":"")); await cargarAli();
+}
+function sesEstado(s){ var ts=AL.tareas.filter(function(t){ return t.datos.sid===s.id; }); return ts.length&&ts.every(function(t){ return t.datos.estado==="completada"; })?"completada":"abierta"; }
+ACT.alarchant=async function(){
+  var ids=AL.sesiones.filter(function(s){ return !HIST.arch[s.id]&&(s.datos.fecha||fechaDeSid(s.id))<hoy(); }).map(function(s){ return s.id; });
+  if(!ids.length){ toast("No hay sesiones de días anteriores sin archivar"); return; }
+  if(!confirm("Se archivarán "+ids.length+" sesiones de días anteriores (salen de las listas y los conteos; no se borra nada y se pueden restaurar). ¿Continuar?")) return;
+  await archivarVarias(ids,true);
+};
+ACT.alarchcomp=async function(){
+  var ids=AL.sesiones.filter(function(s){ return !HIST.arch[s.id]&&sesEstado(s)==="completada"; }).map(function(s){ return s.id; });
+  if(!ids.length){ toast("No hay sesiones completadas sin archivar"); return; }
+  if(!confirm("Se archivarán "+ids.length+" sesiones ya completadas. ¿Continuar?")) return;
+  await archivarVarias(ids,true);
+};
+ACT.alrestall=async function(){
+  var ids=AL.sesiones.filter(function(s){ return HIST.arch[s.id]; }).map(function(s){ return s.id; }); if(!ids.length) return;
+  if(!confirm("Se restaurarán "+ids.length+" sesiones archivadas. ¿Continuar?")) return; await archivarVarias(ids,false);
+};
+ACT.aldelarch=async function(){
+  var ids=AL.sesiones.filter(function(s){ return HIST.arch[s.id]; }).map(function(s){ return s.id; }); if(!ids.length){ toast("No hay sesiones archivadas"); return; }
+  if(!confirm("Se ELIMINARÁN definitivamente "+ids.length+" sesiones archivadas, con sus tareas y documentos. No se puede deshacer. ¿Continuar?")) return;
+  var co0=coActual(), n=0;
+  try{ for(var i=0;i<ids.length;i++){ await delFiltroVerificado("ops_tareas",{"datos->>sid":"eq."+ids[i]}); await delFiltroVerificado("ops_docs",{"datos->>sid":"eq."+ids[i]}); await DB.del("ops_sesiones",ids[i]); delete HIST.arch[ids[i]]; n++; }
+    await limpiarResiduos(co0,true); toast("Eliminadas "+n+" sesiones archivadas"); }catch(e){ toast("No se pudo eliminar todo: "+(e.message||e),5000); }
+  await cargarAli();
+};
+ACT.sesarch=async function(){
+  var id=SESV.id, arch=!!HIST.arch[id];
+  if(!arch&&!confirm("¿Archivar esta sesión? Sale de las listas y los conteos (despacho, enrutador, tareas de los auxiliares). No se borra y se puede restaurar.")) return;
+  try{ await archivarSes(id,!arch); toast(arch?"Sesión restaurada":"Sesión archivada"); await cargarSes(); render(); }catch(e){ toast("No se pudo: "+(e.message||e),5000); }
+};
+/* panel de la pantalla de Alistamiento */
+function histPanelHtml(){
+  if(!esCoord()) return "";
+  var na=AL.sesiones.filter(function(s){ return HIST.arch[s.id]; }).length, nv=AL.sesiones.filter(function(s){ return !HIST.arch[s.id]&&!sesVigente(s.id); }).length;
+  return '<div class="card"><b>Sesiones anteriores</b><p class="small muted">Las sesiones con más de <select id="histsel" data-act-change="histdias" class="compact" style="display:inline-block;width:auto">'+[1,2,3,5,7,15,30].map(function(n){ return '<option value="'+n+'"'+(HIST.dias===n?' selected':'')+'>'+n+'</option>'; }).join("")+'</select> día(s) <b>se ignoran solas</b> en la revisión del despacho, el enrutador y las tareas de los auxiliares. Hoy hay <b>'+nv+'</b> ignoradas y <b>'+na+'</b> archivadas.</p>'+
+    '<div class="row" style="flex-wrap:wrap"><button class="btn ghost sm" data-act="alarchant">Archivar las de días anteriores</button><button class="btn ghost sm" data-act="alarchcomp">Archivar las completadas</button><button class="btn ghost sm" data-act="alver">'+(HIST.ver?'Ocultar archivadas':'Ver archivadas ('+na+')')+'</button></div>'+
+    (HIST.ver&&na?'<div class="row" style="flex-wrap:wrap;margin-top:6px"><button class="btn ghost sm" data-act="alrestall">Restaurar todas</button><button class="btn ghost sm" style="color:#c0392b;border-color:#c0392b" data-act="aldelarch">Eliminar las archivadas</button></div>':'')+'</div>';
 }
 
 /* ===== 67_ubicaciones.js ===== */
